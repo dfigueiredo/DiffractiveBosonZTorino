@@ -49,6 +49,8 @@
 <use name="DataFormats/ParticleFlowCandidate"/>
 <use name="DataFormats/ParticleFlowReco"/>
 <use name="DPGAnalysis/SiStripTools"/>
+<use name="PhysicsTools/Utilities"/>
+
 <export>
 
 <export>

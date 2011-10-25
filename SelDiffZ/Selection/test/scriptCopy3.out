@@ -1,0 +1,15 @@
+set addressDANI="/tmp/marone"
+
+foreach SOURCEFILE('/ZJetToEE_Pt-15to3000_TuneZ2_Flat_7TeV_pythia6/Summer11-PU_S3_START42_V11-v2/GEN-SIM-RECO#5078fa32-8016-11e0-b5d1-003048f1c5d0')
+python ../CopyFile.py --destdir=$addressDANI --node=T2_ES_IFCA --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_IT_Pisa --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_IT_Bari --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_IT_Legnaro --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_FR_GRIF_IRFU --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_BE_UCL --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T1_US_FNAL --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_US_Caltech --lfn=$SOURCEFILE
+python ../CopyFile.py --destdir=$addressDANI --node=T2_IN_TIFR --lfn=$SOURCEFILE   
+python ../CopyFile.py --destdir=$addressDANI --node=T2_UK_London_Brunel --lfn=$SOURCEFILE   
+python ../CopyFile.py --destdir=$addressDANI --node=T2_US_Nebrasca --lfn=$SOURCEFILE
+end

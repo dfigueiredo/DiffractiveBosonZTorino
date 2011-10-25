@@ -23,14 +23,12 @@ process.options = cms.untracked.PSet(wantSummary=cms.untracked.bool(True),
 
 readFilesPompyt = cms.untracked.vstring()
 readFilesPompyt.extend([
-    "file:/tmp/marone/store/mc/Summer11/DYToEE_M-20_TuneZ2_7TeV-pythia6/AODSIM/PU_S3_START42_V11-v2/0000/00CF200D-907C-E011-843E-003048D4363C.root",
-#    "file:///tmp/marone/store/mc/Spring11/DYtoEE_M_20_TuneD6T_7TeV-pythia6/AODSIM/PU_S3_START42_V11-v2/0000/00CF200D-907C-E011-843E-003048D4363C.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_1.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_2.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_3.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_4.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_5.root",
-#    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_6.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_1.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_2.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_3.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_4.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_5.root",
+    "rfio:/castor/cern.ch/user/a/aproskur/z/pompyt_zg_pd_minus_reco_6.root",
     ]
                        )
 
@@ -58,7 +56,7 @@ process.Selection = cms.EDFilter('ZanalyzerFilter',
                                  triggerCollectionTag = cms.untracked.InputTag("TriggerResults","","HLT"),
                                  filename=cms.untracked.string("ZAnalysisFilter.root"),
                                  UseCombinedPrescales = cms.bool(True),
-                                 doTheHLTAnalysis = cms.bool(False),
+                                 doTheHLTAnalysis = cms.bool(True),
                                  TriggerNames = alltriggers
                                  )
 
@@ -78,26 +76,11 @@ process.MakeRootuplaForward = cms.EDFilter('MakeRootuplaForward',
                                            muons =cms.untracked.bool(False),
                                            )
 
-process.load("JetCollections_cfi")
-
-process.demo = cms.EDProducer('HistoProducer',
-                              electronCollection = cms.InputTag('gsfElectrons'),
-                              triggerCollection = cms.InputTag("TriggerResults","","HLT"),
-                              UseCombinedPrescales = cms.bool(False),
-                              TriggerNames = alltriggers,
-                              removePU=  cms.bool(True),
-                              usingMC=  cms.bool(True),
-                              doTheHLTAnalysis = cms.bool(False),
-                              VertexCollectionTag = cms.InputTag('offlinePrimaryVertices'),              
-)
 
 process.TFileService = cms.Service("TFileService",
                                        fileName = cms.string('histo.root')
                                    )
 
-process.p = cms.Path(
-        process.PFJetPath*
-        process.Selection*
-        #process.demo*
-        process.MakeRootuplaForward
+process.p = cms.Path(process.Selection
+                     *process.MakeRootuplaForward
                      )

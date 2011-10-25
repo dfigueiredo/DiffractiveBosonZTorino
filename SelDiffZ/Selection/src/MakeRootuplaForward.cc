@@ -18,7 +18,6 @@
 #include "DataFormats/HcalDetId/interface/HcalDetId.h"
 #include "DataFormats/HcalDigi/interface/HcalDigiCollections.h"
 #include "DataFormats/Luminosity/interface/LumiSummary.h"
-#include "DataFormats/Luminosity/interface/LumiDetails.h"
 #include "FWCore/Framework/interface/LuminosityBlock.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/Framework/interface/Event.h"
@@ -47,6 +46,11 @@
 #include "DataFormats/Common/interface/DetSetVector.h"
 #include "FWCore/Common/interface/TriggerNames.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
+#include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h" 
+#include "PhysicsTools/Utilities/interface/LumiReWeighting.h"
+//PU reweight
+#include "SelDiffZ/Selection/interface/Flat10.h"
+#include "SelDiffZ/Selection/interface/ZSkim_v1.h"
 
 MakeRootuplaForward::MakeRootuplaForward(const edm::ParameterSet& iConfig)
 {
@@ -112,7 +116,47 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple->timestamp=timestamp;
   pat::Electron maxETelec2;
   pat::Electron maxETelec;
-  
+
+	//////////////////
+	////// Pile UP studies
+	/////////////////
+
+	if (ActivateMC_){
+		edm::InputTag PileupSrc_ = (edm::InputTag) "addPileupInfo";
+		Handle<std::vector< PileupSummaryInfo > >  PupInfo;
+		iEvent.getByLabel(PileupSrc_, PupInfo);
+
+		std::vector<PileupSummaryInfo>::const_iterator PVI;
+		int npv = -1;
+
+		for(PVI = PupInfo->begin(); PVI != PupInfo->end(); ++PVI) {
+			int BX = PVI->getBunchCrossing();
+			if(BX == 0) { 
+				npv = PVI->getPU_NumInteractions();
+				continue;
+			}      
+			if (debug) std::cout << " Pileup Information: bunchXing, nvtx: " << PVI->getBunchCrossing() << " " << PVI->getPU_NumInteractions() << std::endl;
+		}   
+
+		std::vector<float> simulated;
+		std::vector<float> trueD;
+		LumiReWeighting LumiWeights_;
+
+		//Calculate the distributions (our data and MC)
+		for( int i=0; i<25; ++i) {
+			trueD.push_back(ZSkim_2010[i]); // Name of the vector calculated with estimatedPU.py!
+			simulated.push_back(probdistFlat10[i]); // Name of the vector included in Flat10.h !
+		}
+
+		LumiWeights_ = edm::LumiReWeighting(simulated, trueD);
+		double MyWeight = LumiWeights_.weight( npv );
+		if (debug) cout<<"weight is "<<MyWeight<<endl;
+		Rootuple->PUMCweight=MyWeight;
+	}
+	else {
+	  Rootuple->PUMCweight=1;
+	}
+
   if (electrons_){
     
     // *************************************************************************
@@ -256,26 +300,26 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   // Luminosity info:
   // ************************************************************************* 
 
-  edm::LuminosityBlock const& lumiBlock = iEvent.getLuminosityBlock();
-  edm::Handle<LumiSummary> lumiSummary;
-  edm::Handle<LumiDetails> d;
-lumiBlock.getByLabel("lumiProducer",d);
-  lumiBlock.getByLabel("lumiProducer", lumiSummary);
-  int bx=iEvent.bunchCrossing();
-  const LumiSummary *lumi=lumiSummary.product();
-  float istlumi=lumi->avgInsDelLumi();
+  if (!ActivateMC_){
+    edm::LuminosityBlock const& lumiBlock = iEvent.getLuminosityBlock();
+    edm::Handle<LumiSummary> lumiSummary;
+    edm::Handle<LumiDetails> d;
+    lumiBlock.getByLabel("lumiProducer",d);
+    lumiBlock.getByLabel("lumiProducer", lumiSummary);
+    int bx=iEvent.bunchCrossing();
+    const LumiSummary *lumi=lumiSummary.product();
+    float istlumi=lumi->avgInsDelLumi();
   //const float istlumierr=d->lumiError("OCC1",bx);
   // From 4_1
-  std::cout<<"pino pino "<<bx<<endl;
-  const float istlumierr=d->lumiError(LumiDetails::kOCC1,bx);
-  Rootuple->istlumi=istlumi;
-  Rootuple->istlumierr=istlumierr;
-  //double istlumiPerBX=d->lumiValue("OCC1",bx);
-  // From 4_1
-  double  istlumiPerBX=d->lumiValue(LumiDetails::kOCC1,bx);
-  Rootuple->istlumiPerBX=istlumiPerBX;
-  Rootuple->bx=bx;
-
+    const float istlumierr=d->lumiError(LumiDetails::kOCC1,bx);
+    Rootuple->istlumi=istlumi;
+    Rootuple->istlumierr=istlumierr;
+    //double istlumiPerBX=d->lumiValue("OCC1",bx);
+    // From 4_1
+    double  istlumiPerBX=d->lumiValue(LumiDetails::kOCC1,bx);
+    Rootuple->istlumiPerBX=istlumiPerBX;
+    Rootuple->bx=bx;
+  }
   // *************************************************************************
   // Calo Towers
   // ************************************************************************* 
@@ -943,44 +987,8 @@ lumiBlock.getByLabel("lumiProducer",d);
 
   if (ActivateMC_){
     if (debug_deep) std::cout<<"You activate the MC variables analysis: getting the MC truth"<<std::endl;
-    const HepMC::GenEvent *myGenEvent;
-    // 3) generated electrons
-    Handle<edm::HepMCProduct> hepMC;
-    iEvent.getByLabel("generator", hepMC);
-    myGenEvent = hepMC->GetEvent();
- 
-    // Retrieving PU info, if existing
-    try
-      {
-	Handle<PileupSummaryInfo> PUInfo;
-	iEvent.getByLabel("addPileupInfo", PUInfo);
-	
-	Rootuple->PU_NumInt = PUInfo->getPU_NumInteractions() ;
-	//for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) 
-	// {
-	    Rootuple->PU_zpos         =PUInfo->getPU_zpositions()    ;
-	    Rootuple->PU_ntrks_lowpT  =PUInfo->getPU_ntrks_lowpT()   ;
-	    Rootuple->PU_ntrks_highpT =PUInfo->getPU_ntrks_highpT()  ; 
-	    Rootuple->PU_sumpT_lowpT  =PUInfo->getPU_sumpT_lowpT()   ;  
-	    Rootuple->PU_sumpT_highpT =PUInfo->getPU_sumpT_highpT()  ; 
-	    // }
-	
-	std::cout << "ROBI Run:event " << eventNumber << ", PU nvtx: " <<  PUInfo->getPU_NumInteractions() <<   std::endl;
-	std::cout << "ROBI Run:event " << eventNumber << ",          " <<  Rootuple->PU_zpos.size()        <<   std::endl; 
-	for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) {
-	  std::cout << ni << " zpos "            << (PUInfo->getPU_zpositions())[ni]  << " " << Rootuple->PU_zpos[ni]         << std::endl;
-	  std::cout << ni << " ntracks low pt "  << (PUInfo->getPU_ntrks_lowpT())[ni] << " " << Rootuple->PU_ntrks_lowpT[ni]  << std::endl;
-	  std::cout << ni << " ntracks high pt " << (PUInfo->getPU_ntrks_highpT())[ni]<< " " << Rootuple->PU_ntrks_highpT[ni] << std::endl;
-	  std::cout << ni << " sum low pt "      << (PUInfo->getPU_sumpT_lowpT())[ni] << " " << Rootuple->PU_sumpT_lowpT[ni]  << std::endl;
-	  std::cout << ni << " sum  high pt "    << (PUInfo->getPU_sumpT_highpT())[ni]<< " " << Rootuple->PU_sumpT_highpT[ni] << std::endl;
-	}
-      }
-    catch(cms::Exception& e)
-      {
-	std::cout<<"No PUinfoSummary block found"<<e.what();
-      }   
-    
-      
+
+    //Variable declaration
     int count=0;
     TLorentzVector part(0.,0.,0.,0.);
     TLorentzVector partVis(0.,0.,0.,0.);
@@ -1008,9 +1016,39 @@ lumiBlock.getByLabel("lumiProducer",d);
     int xL_LTM5Num=0;
     int xL_GTP5Num=0;
 
-    //Loop on gen particles
-    HepMC::GenEvent::particle_const_iterator mcIter;
-    for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
+    std::vector<double> genpt;
+    std::vector<double> tracks;
+    std::vector<double> eta;
+    std::vector<double> etaPT;
+    std::vector<double> tracksPT;
+
+    try
+      {
+	//////OLD BLOCK
+	const HepMC::GenEvent *myGenEvent;
+	// 3) generated electrons
+	Handle<edm::HepMCProduct> hepMC;
+	iEvent.getByLabel("generator",hepMC);
+	myGenEvent = hepMC->GetEvent();
+	//Loop on gen particles
+	HepMC::GenEvent::particle_const_iterator mcIter;
+
+	//edm::Handle<reco::GenParticleCollection> genParticles;
+	//iEvent.getByLabel("generator", genParticles );
+	
+	//for (reco::GenParticleCollection::const_iterator mcIter=genParticles->begin();mcIter!=genParticles->end();++mcIter){
+	  
+	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
+	  //  bool electronFromZ=false;
+	  //int motherId=0;
+	  //int motherstatus=0;
+	  //int status=(*mcIter).status(); 
+	  //int pdg=(*mcIter).pdg_id();
+	  //const HepMC::GenParticle* p = (&*mcIter);
+      
+	  //HepMC::GenVertex* productionVertex = p->production_vertex();
+	  //double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
+      
       bool electronFromZ=false;
       int motherId=0;
       int motherstatus=0;
@@ -1155,14 +1193,46 @@ lumiBlock.getByLabel("lumiProducer",d);
     Rootuple-> p_diss_mass_gen=p_diss_mass;
     Rootuple-> xL_p_diss= xL_p_diss;
 
-    //cout<<"Mx2_gen "<<Rootuple->Mx2_gen<<" Mx2 "<<Rootuple->Mx2 <<endl;
-
-    std::vector<double> genpt;
-    std::vector<double> tracks;
-    std::vector<double> eta;
-    std::vector<double> etaPT;
-    std::vector<double> tracksPT;
-
+    //cout<<"Mx2_gen "<<Rootuple->Mx2_gen<<" Mx2 "<<Rootuple->Mx2 <<endl;	
+    
+      }
+    catch(cms::Exception& e)
+      {
+	std::cout<<"No HEPMCProduct block found"<<e.what();
+      }
+  
+    //PU studies, disabled now...
+    /*
+    try
+      {
+	Handle<PileupSummaryInfo> PUInfo;
+	iEvent.getByLabel("addPileupInfo", PUInfo);
+	
+	Rootuple->PU_NumInt = PUInfo->getPU_NumInteractions() ;
+	//for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) 
+	// {
+	    Rootuple->PU_zpos         =PUInfo->getPU_zpositions()    ;
+	    Rootuple->PU_ntrks_lowpT  =PUInfo->getPU_ntrks_lowpT()   ;
+	    Rootuple->PU_ntrks_highpT =PUInfo->getPU_ntrks_highpT()  ; 
+	    Rootuple->PU_sumpT_lowpT  =PUInfo->getPU_sumpT_lowpT()   ;  
+	    Rootuple->PU_sumpT_highpT =PUInfo->getPU_sumpT_highpT()  ; 
+	    // }
+	
+	std::cout << "ROBI Run:event " << eventNumber << ", PU nvtx: " <<  PUInfo->getPU_NumInteractions() <<   std::endl;
+	std::cout << "ROBI Run:event " << eventNumber << ",          " <<  Rootuple->PU_zpos.size()        <<   std::endl; 
+	for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) {
+	  std::cout << ni << " zpos "            << (PUInfo->getPU_zpositions())[ni]  << " " << Rootuple->PU_zpos[ni]         << std::endl;
+	  std::cout << ni << " ntracks low pt "  << (PUInfo->getPU_ntrks_lowpT())[ni] << " " << Rootuple->PU_ntrks_lowpT[ni]  << std::endl;
+	  std::cout << ni << " ntracks high pt " << (PUInfo->getPU_ntrks_highpT())[ni]<< " " << Rootuple->PU_ntrks_highpT[ni] << std::endl;
+	  std::cout << ni << " sum low pt "      << (PUInfo->getPU_sumpT_lowpT())[ni] << " " << Rootuple->PU_sumpT_lowpT[ni]  << std::endl;
+	  std::cout << ni << " sum  high pt "    << (PUInfo->getPU_sumpT_highpT())[ni]<< " " << Rootuple->PU_sumpT_highpT[ni] << std::endl;
+	}
+      }
+    catch(cms::Exception& e)
+      {
+	std::cout<<"No PUinfoSummary block found"<<e.what();
+      }   
+    */
 
     Handle<reco::GenParticleCollection> genParticles;     
     iEvent.getByLabel("genParticles",genParticles);  // standard PYTHIA collection
@@ -1204,41 +1274,6 @@ lumiBlock.getByLabel("lumiProducer",d);
       }
     }
     
-
-    //Loop on Gen Vertexes  - old
-    //HepMC::GenEvent::vertex_const_iterator viter;
-    //HepMC::GenEvent::vertex_const_iterator vbegin = myGenEvent->vertices_begin();
-    //HepMC::GenEvent::vertex_const_iterator vend = myGenEvent->vertices_end();
-    //int vtxcnt =0;
-    //
-    //for ( viter=vbegin; viter!=vend; viter++ ) {
-    //  HepMC::GenVertex* v = *viter;
-    //  HepMC::GenVertex::particles_out_const_iterator firstDaughterIt = v->particles_out_const_begin();
-    //  HepMC::GenVertex::particles_out_const_iterator lastDaughterIt = v->particles_out_const_end();
-    //  vtxcnt++;
-    //  //cout<< ">> EVT " << eventNumber << " vertex "  << vtxcnt << " " << v->point3d().x() << " " << v->point3d().y() << " " <<  v->point3d().z() <<  endl;
-    //  // Loop on particles
-    //  for ( ; firstDaughterIt != lastDaughterIt ; firstDaughterIt++ ) {
-    //	HepMC::GenParticle* daugh = *firstDaughterIt;
-    //	double pt_gen = sqrt(daugh->momentum().px()*daugh->momentum().px()+daugh->momentum().py()*daugh->momentum().py());
-    //	if (fabs(daugh->momentum().eta())<2.4 &&  pt_gen >= 0.2 ) {
-    //	  if (daugh->status()==1 ) {
-    //	    //cout<<"pdg_id "<<daugh->pdg_id()<<" and energy "<<daugh->momentum().e()<<" endvertex "<< daugh->end_vertex() << endl;
-    //	    //
-    //	    // removing gamma, sigma0, lambda0, Ks,Kl, n, Sigmas, csi from the list
-    //	    //
-    //	    HepHisto_PdgId->Fill(daugh->pdg_id());
-    //	    if ( daugh->pdg_id() != 22 && daugh->pdg_id() != 3212 && daugh->pdg_id() != 3122  && daugh->pdg_id() != 130 && daugh->pdg_id() != 310  && abs(daugh->pdg_id()) != 2112 && abs(daugh->pdg_id()) != 3222 && abs(daugh->pdg_id()) != 3112 && daugh->pdg_id() != 3322) {
-    //	      //genpt.push_back(pt_gen);
-    //	      //eta.push_back(daugh->momentum().eta());
-    //	    }
-    //	  } // if status==1
-    //	}
-    // } // loop over particle_out
-    //}
-
-    //cout << " NICOLO " << numseltracks << " " <<  genpt.size() << endl;
-
     const int  size2 = (int) genpt.size();
     int *sorted = new int[size2];
     double *vv = new double[size2];
@@ -1390,7 +1425,6 @@ lumiBlock.getByLabel("lumiProducer",d);
   // *************************************************************************
   // Filling the rootuples
   // *************************************************************************
-  std::cout<<"--------------"<<std::endl;  
   tree_->Fill();
   return true;
 

@@ -153,6 +153,7 @@ class DifNtuple {
   //int hlt20Match;
   std::vector<double> electronEnergy;
   std::vector<double> muEnergy;
+  double PUMCweight;
 
   int   PU_NumInt;
   std::vector<float> PU_zpos;
