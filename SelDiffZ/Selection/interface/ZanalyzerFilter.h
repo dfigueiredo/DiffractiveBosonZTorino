@@ -46,6 +46,7 @@ class ZanalyzerFilter : public edm::EDFilter {
 		std::vector<std::string> triggerNames_; // name of the algorithms selected by our analysis
 		std::vector<unsigned int> triggerIndices_; // index of the algorithms selected by our analysis
 		bool doTheHLTAnalysis_;
+		bool ActivateMC_;
 
 
 
@@ -58,6 +59,12 @@ class ZanalyzerFilter : public edm::EDFilter {
 		TH1D* Identification;
 		TH1D* Selected;
 		TH1F* h_invMass;
+		TH1F* h_invMassGEN;
+		TH1F* h_elePxGEN;      
+		TH1F* h_elePyGEN;      
+		TH1F* h_elePzGEN;      
+		TH1F* h_eleEnergyGEN;  	   
+	  
 		TH1F* h_invMassEE;
 		TH1F* h_invMassEB;
 		TH1F* h_invMassBB;
@@ -78,6 +85,7 @@ ZanalyzerFilter::ZanalyzerFilter (const edm::ParameterSet & parameters)
 	triggerNames_         = parameters.getParameter< std::vector<std::string> > ("TriggerNames");
 	useAllTriggers_       = (triggerNames_.size()==0);
 	doTheHLTAnalysis_     = parameters.getParameter<bool>("doTheHLTAnalysis");
+	ActivateMC_           = parameters.getParameter<bool>("ActivateMC");
 
 
 
@@ -86,6 +94,11 @@ ZanalyzerFilter::ZanalyzerFilter (const edm::ParameterSet & parameters)
 
   eventAccept= fs->make<TH1D>("eventAccept","Good Event Multiplicity", 20, 0, 20);
   h_invMass = fs->make<TH1F>("Z peak - WP80","Z peak;InvMass (Gev)", 140, 0.0, 140.0);
+  h_invMassGEN= fs->make<TH1F>("Z peak GEN ","Z peak GEN;InvMass (Gev)", 140, 0.0, 140.0);
+  h_elePxGEN= fs->make<TH1F>("ele Z px ","electrons px (Gev)", 140, 0.0, 140.0);
+  h_elePyGEN= fs->make<TH1F>("ele Z py "," electrons py (Gev)", 140, 0.0, 140.0);
+  h_elePzGEN= fs->make<TH1F>("ele Z pz "," electrons pz (Gev)", 140, 0.0, 140.0);
+  h_eleEnergyGEN= fs->make<TH1F>("ele Z energy "," electrons energy (Gev)", 200, 0.0, 200.0);
   h_invMassEE =  fs->make<TH1F>("Z peak - WP80 Endcap-Endcap","Z peak;InvMass (Gev)", 140, 0.0, 140.0);
   h_invMassEB = fs->make<TH1F>("Z peak - WP80 Endcap-Barrel","Z peak;InvMass (Gev)", 140, 0.0, 140.0);
   h_invMassBB = fs->make<TH1F>("Z peak - WP80 Barrel-Barrel","Z peak;InvMass (Gev)", 140, 0.0, 140.0);

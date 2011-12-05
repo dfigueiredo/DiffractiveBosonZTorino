@@ -47,7 +47,7 @@
 #include "FWCore/Common/interface/TriggerNames.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h" 
-#include "PhysicsTools/Utilities/interface/LumiReWeighting.h"
+
 //PU reweight
 #include "SelDiffZ/Selection/interface/Flat10.h"
 #include "SelDiffZ/Selection/interface/ZSkim_v1.h"
@@ -56,8 +56,8 @@ MakeRootuplaForward::MakeRootuplaForward(const edm::ParameterSet& iConfig)
 {
   electronCollectionTag_=iConfig.getUntrackedParameter<edm::InputTag>("electronCollectionTag");
   //  produces< pat::ElectronCollection > ("patElectrons").setBranchAlias("patElectrons");
-  std::string outputFile_D = iConfig.getUntrackedParameter<std::string>("filename");
-  outputFile_ = iConfig.getUntrackedParameter<std::string>("outputFile", outputFile_D);
+  //std::string outputFile_D = iConfig.getUntrackedParameter<std::string>("filename");
+  //outputFile_ = iConfig.getUntrackedParameter<std::string>("outputFile", outputFile_D);
   caloTowerTag_=iConfig.getParameter<edm::InputTag>("CaloTowerTag");
   if(electrons_)  zeeCollectionTag_ = iConfig.getUntrackedParameter<edm::InputTag>("zeeCollectionTag");
   zmumuCollectionTag_ = iConfig.getUntrackedParameter<edm::InputTag>("zmumuCollectionTag");
@@ -72,6 +72,7 @@ MakeRootuplaForward::MakeRootuplaForward(const edm::ParameterSet& iConfig)
   muons_ = iConfig.getUntrackedParameter<Bool_t>("muons");
   //  vertex_algo= iConfig.getParameter<std::string>("VERTEX_ALGO");
   //Flag: Vuoi riempire la entupla con gli elettroni
+
 }
 
 MakeRootuplaForward::~MakeRootuplaForward()
@@ -104,11 +105,10 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   edm::RunNumber_t runNumber   = iEvent.run();
   edm::EventNumber_t eventNumber = Long64_t( iEvent.eventAuxiliary().event() );
   edm::LuminosityBlockNumber_t lumiSection = iEvent.id().luminosityBlock();
-  bool hltMatch=false;
   Rootuple->Zero();
   Rootuple->RunNumber=runNumber;
   Rootuple->EventNumber=eventNumber; 
-  Rootuple->Lumi=lumiSection; 
+  Rootuple->LumiSection=lumiSection; 
 
   if (debug_deep)
     std::cout<<"Event Number "<<eventNumber<<" Lumi "<<lumiSection<<endl;
@@ -116,46 +116,56 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple->timestamp=timestamp;
   pat::Electron maxETelec2;
   pat::Electron maxETelec;
+  
+  
+  //////////////////
+  ////// Pile UP studies
+  /////////////////
+  
+  if (ActivateMC_){
+    try
+      {
+	edm::InputTag PileupSrc_ = (edm::InputTag) "addPileupInfo";
+	Handle<std::vector< PileupSummaryInfo > >  PupInfo;
+	iEvent.getByLabel(PileupSrc_, PupInfo);
 
-	//////////////////
-	////// Pile UP studies
-	/////////////////
+  
+	std::vector<PileupSummaryInfo>::const_iterator PVI;
+	int npv = -1;
+	
+	for(PVI = PupInfo->begin(); PVI != PupInfo->end(); ++PVI) {
+	  int BX = PVI->getBunchCrossing();
+	  if(BX == 0) { 
+	    npv = PVI->getPU_NumInteractions();
+	    Rootuple->PU_NumInt       = PVI->getPU_NumInteractions() ;
+	    Rootuple->PU_zpos         = PVI->getPU_zpositions()    ;
+	    Rootuple->PU_ntrks_lowpT  = PVI->getPU_ntrks_lowpT()   ;
+	    Rootuple->PU_ntrks_highpT = PVI->getPU_ntrks_highpT()  ; 
+	    Rootuple->PU_sumpT_lowpT  = PVI->getPU_sumpT_lowpT()   ;  
+	    Rootuple->PU_sumpT_highpT = PVI->getPU_sumpT_highpT()  ; 
+	    std::cout << " Pileup Information: bunchXing, nvtx: " << PVI->getBunchCrossing() << " " << PVI->getPU_NumInteractions() << std::endl;
+  
+	    continue;
+	  }      
+	  
+	  if (debug) std::cout << " Pileup Information: bunchXing, nvtx: " << PVI->getBunchCrossing() << " " << PVI->getPU_NumInteractions() << std::endl;
+	}   
+	
+	double MyWeight = LumiWeights_.weight( npv );
+	if (debug) cout<<"weight is "<<MyWeight<<endl;
+	cout<<"weight is "<<MyWeight<<endl;
+	Rootuple->PUMCweight=MyWeight;
+      }
+    catch(cms::Exception& e)
+      {
+	std::cout<<"No PUinfoSummary block found"<<e.what();
+      }
+  }   
+  else {
+    Rootuple->PUMCweight=1;
+  }
+    
 
-	if (ActivateMC_){
-		edm::InputTag PileupSrc_ = (edm::InputTag) "addPileupInfo";
-		Handle<std::vector< PileupSummaryInfo > >  PupInfo;
-		iEvent.getByLabel(PileupSrc_, PupInfo);
-
-		std::vector<PileupSummaryInfo>::const_iterator PVI;
-		int npv = -1;
-
-		for(PVI = PupInfo->begin(); PVI != PupInfo->end(); ++PVI) {
-			int BX = PVI->getBunchCrossing();
-			if(BX == 0) { 
-				npv = PVI->getPU_NumInteractions();
-				continue;
-			}      
-			if (debug) std::cout << " Pileup Information: bunchXing, nvtx: " << PVI->getBunchCrossing() << " " << PVI->getPU_NumInteractions() << std::endl;
-		}   
-
-		std::vector<float> simulated;
-		std::vector<float> trueD;
-		LumiReWeighting LumiWeights_;
-
-		//Calculate the distributions (our data and MC)
-		for( int i=0; i<25; ++i) {
-			trueD.push_back(ZSkim_2010[i]); // Name of the vector calculated with estimatedPU.py!
-			simulated.push_back(probdistFlat10[i]); // Name of the vector included in Flat10.h !
-		}
-
-		LumiWeights_ = edm::LumiReWeighting(simulated, trueD);
-		double MyWeight = LumiWeights_.weight( npv );
-		if (debug) cout<<"weight is "<<MyWeight<<endl;
-		Rootuple->PUMCweight=MyWeight;
-	}
-	else {
-	  Rootuple->PUMCweight=1;
-	}
 
   if (electrons_){
     
@@ -232,7 +242,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       
       // my electrons now:
       maxETelec = myElectrons[max_et_index];
-      myElectrons[max_et_index2];
+      maxETelec2 = myElectrons[max_et_index2];   /// robi
       
       // *************************************************************************
       // FILL THE QUANTITY RELEATED TO THE ELECTRON
@@ -284,9 +294,8 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       double mee_up=120;
       //cout<<"mee "<<mee<<" and eta "<<Z.Eta()<<endl;
       
-      Rootuple->InvariantMass=mee;  
+      Rootuple->ZMass=mee;  
       //Rootuple->etaZed=zee.eta();  
-      //Rootuple->InvariantMass=mee;   
       Rootuple->etaZ=Z.Eta();   
       
 
@@ -308,13 +317,11 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     lumiBlock.getByLabel("lumiProducer", lumiSummary);
     int bx=iEvent.bunchCrossing();
     const LumiSummary *lumi=lumiSummary.product();
-    float istlumi=lumi->avgInsDelLumi();
-  //const float istlumierr=d->lumiError("OCC1",bx);
-  // From 4_1
+    float istlumi=lumi->avgInsDelLumi();  // average (su LS) instant luminosity (delivered)
+    // From 4_1
     const float istlumierr=d->lumiError(LumiDetails::kOCC1,bx);
     Rootuple->istlumi=istlumi;
     Rootuple->istlumierr=istlumierr;
-    //double istlumiPerBX=d->lumiValue("OCC1",bx);
     // From 4_1
     double  istlumiPerBX=d->lumiValue(LumiDetails::kOCC1,bx);
     Rootuple->istlumiPerBX=istlumiPerBX;
@@ -324,14 +331,9 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   // Calo Towers
   // ************************************************************************* 
 
-  //Thresholds..Parameter from outside.. ?? 
-  //double energyThresholdHB = 2.0;
-  //double  energyThresholdHE = 2.0;
-  //double  energyThresholdHF = 4.0;
-  //double energyThresholdEB=1.5;
-  //double energyThresholdEE=2.0;
 
   /// New Thresholds 9 may 2011
+  /// tuning should be done with unpaired Bunches (energy in HF)
   double energyThresholdHB = 1.25;
   double energyThresholdHE = 1.5; // 1.9;
   double energyThresholdHF = 6.0; // 4.0;
@@ -389,7 +391,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   CaloTowerCollection::const_iterator calotowers_end = towerCollection.end();
   //cout<< " before calotower loop "  <<endl;
   for(; calotower != calotowers_end; ++calotower) {
-
+    
     if (fabs(calotower->eta())> 4.9) continue;
     
     bool hasHCAL = false;
@@ -549,7 +551,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	//    cout << "NIK CALO " <<  calotower->id()  << " " <<  CaloTheta   << " - cos " << TMath::Cos(CaloTheta) ;
 	//    cout << " -pz "     << caloTowerPz << " energy " << caloTowerEnergy << endl; 
 	//    << " ck    " <<  pzck <<  endl;
-	//cout << " Epz_plus "     << Epz_plus << " Epz_minus   " <<  Epz_minus <<  endl;
+	//    cout << " Epz_plus "     << Epz_plus << " Epz_minus   " <<  Epz_minus <<  endl;
       }
     
   }  ////has to close calotower loop
@@ -617,7 +619,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   double energyTot_PF_minus=0;
   double energyTot_PF_plus=0;
   std::vector<double> etas;
-  int nTracks_PF=0;
+  int nPart_PF=0;
   double energyTot_PF_EE_minus=0;
   double energyTot_PF_EE_plus=0; 
   double sumEHF_minus_PF=0;
@@ -707,7 +709,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     if (first==true && second==true){
       TLorentzVector Z = m1+m2;
       mmumu = Z.M();
-      if (NoMassCuts_) Rootuple->InvariantMass=mmumu;     
+      if (NoMassCuts_) Rootuple->ZMass=mmumu;     
       //cout<<"Invariant Mass is "<<mmumu<<endl;
       first=false;
       second=false;
@@ -739,7 +741,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	//std::cout<<"Zmumu invariant mass outside the limit "<<mmumu_down<<"-"<<mmumu_up<<" GeV"<<std::endl;
 	return false;
       }
-      Rootuple->InvariantMass=mmumu; 
+      Rootuple->ZMass=mmumu; 
       Rootuple->numberOfLeptons=count2;
       Rootuple->etaZ=eta;
     }
@@ -788,21 +790,16 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       float dx=oldvertex.x()-vertex.x();
       float dy=oldvertex.y()-vertex.y();
       float dz=oldvertex.z()-vertex.z();
-      if (fabs(dx) > 0.1 || fabs(dz) > 0.5 || fabs(dy) > 0.1  ){
+      if (fabs(dx) > 0.1 || fabs(dz) > 0.2 || fabs(dy) > 0.1  ){
 	MoreThanOneVertex=true;
       }
     }
     cold=true;
     
     TLorentzVector tmp(px,py,pz,energy); 
-
     //Calculate the distance between the primary vertex and the relative vertex
     double distance= pow( pow(PrimaryVertex.x()-vertex.x(),2)+  pow(PrimaryVertex.y()-vertex.y(),2) +  pow(PrimaryVertex.z()-vertex.z(),2) , 0.5);
-    if (fabs(charge) >0 && distance < MaxAllowableDistance && pt > 0.5){
-      if (eta<0) xi_PF_minus_charged_Vertex_Selection += et * pow(2.71,-eta) / (7000);
-      if (eta>0) xi_PF_plus_charged_Vertex_Selection += et * pow(2.71,eta) / (7000);
-      //cout<<"xi 1 is "<<xi_PF_minus_charged_Vertex_Selection<<" ";
-    }
+
     //Rootuple->distance.push_back(distance);  
     //Rootuple->charge.push_back(charge);
 
@@ -815,7 +812,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 				     (fabs(eta) > 1.5 && fabs(eta) <= 3 && energy > EnThPFEnd) ||
 				     (fabs(eta) > 3 && energy >EnThPFFw) ) )   )
       {        
-	nTracks_PF++;
+	nPart_PF++;
 	Epz_PF_plus+=p+p*TMath::Cos(theta);
 	Epz_PF_minus+=p-p*TMath::Cos(theta);
 	xi_PF_minus += et * pow(2.71,-eta) / (7000);
@@ -829,6 +826,14 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	sumpy +=py;
 	sumpz +=pz;
 	energyModule +=energy;
+
+	if (fabs(charge) >0 && distance < MaxAllowableDistance ) {
+	  if (eta<0) xi_PF_minus_charged_Vertex_Selection += et * pow(2.71,-eta) / (7000);
+	  if (eta>0) xi_PF_plus_charged_Vertex_Selection += et * pow(2.71,eta) / (7000);
+	  if (eta>etaMax_PF_Vertex_Selection ) etaMax_PF_Vertex_Selection=eta;
+	  if (eta<etaMin_PF_Vertex_Selection ) etaMin_PF_Vertex_Selection=eta;
+	    //// MaxAllow = 0.1 
+	}
 	
 	if (eta>0) energyTot_PF_plus+=energy;
 	if (eta<0) energyTot_PF_minus+=energy;
@@ -848,28 +853,42 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	if (eta<etaMin_PF) etaMin_PF=eta;
 	if (eta>etaMax_PF_NOHF && eta<3) etaMax_PF_NOHF=eta;
 	if (eta<etaMin_PF_NOHF && eta>-3) etaMin_PF_NOHF=eta;
-	if (eta>etaMax_PF_Vertex_Selection && distance < MaxAllowableDistance) etaMax_PF_Vertex_Selection=eta;
-	if (eta<etaMin_PF_Vertex_Selection && distance < MaxAllowableDistance) etaMin_PF_Vertex_Selection=eta;
-	
+
 	if (fabs(eta) > 3 ) {
 	  if (eta<0) sumEHF_minus_PF += energy;
 	  if (eta>0) sumEHF_plus_PF += energy;
 	}
 	etas.push_back(eta);
 	dataMass+=tmp;
+	HistoEtaEnergyW->Fill(eta,energy);
       }
   }  // PF loop
 
 
+
   Rootuple->Mx2=dataMass.M2();  /// massaquadro misurata
+  Rootuple->P_x=dataMass.X();
+  Rootuple->P_y=dataMass.Y();
+  Rootuple->P_z=dataMass.Z();
+  //  float * pippo =  HistoEtaEnergyW->GetArray();
+  //cout << HistoEtaEnergyW->GetNbinsX() << endl;
+  for (int i=1;i<=HistoEtaEnergyW->GetNbinsX();i++) {
+    //cout << "ARRAY " <<  *(pippo+i) << "  " << HistoEtaEnergyW->GetBinContent(i) << endl;
+    Rootuple->EnergyInEta.push_back(HistoEtaEnergyW->GetBinContent(i)) ;
+  }
 
-
-  Rootuple->M_x=dataMass.X();
-  Rootuple->M_y=dataMass.Y();
-  Rootuple->M_z=dataMass.Z();
  
+  
+
   if (debug_deep)    std::cout<<"DATA has "<<sumEHF_minus_PF<<" "<<sumEHF_plus_PF<<std::endl;  
   //if (debug_deep) std::cout<<"Eta Min PF is "<<etaMin_PF<<" while max is "<<etaMax_PF<<" and Eta Min No Vertex "<<etaMin_PF_Vertex_Selection<<" and Eta Max No Vertes "<<etaMax_PF_Vertex_Selection<<" and csi_PF_minus is "<<xi_PF_minus<<endl; 
+
+ 
+  //// Computing GAPs
+  //// adding two fake entries at +-4.9 in etas!!!
+
+  etas.push_back(4.9);
+  etas.push_back(-4.9);
 
   const int  size = (int) etas.size();
   int *sorted = new int[size];
@@ -887,7 +906,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     for (int i=0; i<(size-1); i++) {
       diff[i] = fabs(etas[sorted[i+1]]-etas[sorted[i]]);
       //if (debug_deep) cout<<" etas " << i << " size " << size << " diff "<< diff[i]<<endl;
-    }
+        }
   
     TMath::Sort(size-1, diff, diffsorted, true);
     
@@ -965,9 +984,9 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple->xi_Z_plus=xi_Z_plus; 
   Rootuple->xi_PF_NOHF_minus=xi_PF_NOHF_minus;  
   Rootuple->xi_PF_NOHF_plus=xi_PF_NOHF_plus; 
-  Rootuple-> xi_PF_charged_minus=xi_PF_minus_charged_Vertex_Selection;
-  Rootuple-> xi_PF_charged_plus=xi_PF_plus_charged_Vertex_Selection;
-  Rootuple-> nTracks_PF=nTracks_PF;
+  Rootuple-> xi_PV_PF_charged_minus=xi_PF_minus_charged_Vertex_Selection;
+  Rootuple-> xi_PV_PF_charged_plus=xi_PF_plus_charged_Vertex_Selection;
+  Rootuple-> nPart_PF=nPart_PF;
   Rootuple-> energyTot_PF_EE_minus=energyTot_PF_EE_minus;
   Rootuple-> energyTot_PF_EE_plus=energyTot_PF_EE_plus;
   Rootuple-> energyTot_PF_Barrel_minus= energyTot_PF_Barrel_minus;
@@ -992,14 +1011,13 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     int count=0;
     TLorentzVector part(0.,0.,0.,0.);
     TLorentzVector partVis(0.,0.,0.,0.);
-    TLorentzVector partNOZ(0.,0.,0.,0.);
+    TLorentzVector partZ(0.,0.,0.,0.);
     double sumECastor_minus_gen=0;
     double sumECastor_plus_gen=0;
     double sumEZDC_minus_gen=0;
     double sumEZDC_plus_gen=0;
     double etaOutcomingProton=0;
     double energyOutcomingProton=0;
-    //double mostEnergeticParticleGap=0;
     double mostEnergeticXL=0;
     double mostEnergeticXLNum=0;
     vector<double> eta_gen_vec;
@@ -1032,214 +1050,167 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	myGenEvent = hepMC->GetEvent();
 	//Loop on gen particles
 	HepMC::GenEvent::particle_const_iterator mcIter;
-
+	
 	//edm::Handle<reco::GenParticleCollection> genParticles;
 	//iEvent.getByLabel("generator", genParticles );
 	
 	//for (reco::GenParticleCollection::const_iterator mcIter=genParticles->begin();mcIter!=genParticles->end();++mcIter){
-	  
-	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
-	  //  bool electronFromZ=false;
-	  //int motherId=0;
-	  //int motherstatus=0;
-	  //int status=(*mcIter).status(); 
-	  //int pdg=(*mcIter).pdg_id();
-	  //const HepMC::GenParticle* p = (&*mcIter);
-      
-	  //HepMC::GenVertex* productionVertex = p->production_vertex();
-	  //double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
-      
-      bool electronFromZ=false;
-      int motherId=0;
-      int motherstatus=0;
-      int status=(*mcIter)->status(); 
-      int pdg=(*mcIter)->pdg_id();
-      HepMC::GenParticle* p = *(mcIter);
-      HepMC::GenVertex* productionVertex = p->production_vertex();
-      double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
-      
-      //if (debug_deep) cout<<"The particle is "<<(*mcIter)->pdg_id()<<" in status "<<status<<endl;
-      if (fabs(pdg)==11 || fabs(pdg)==22){
 	
-	try{ 
-	  motherId = (*(productionVertex->particles_in_const_begin()))->pdg_id();
-	  motherstatus=(*(productionVertex->particles_in_const_begin()))->status();
-	}
-	catch(cms::Exception& e) {
-	  std::cout << " Not possible to access to the motherId... !" << std::endl;
-	}
-	if (motherId==23) {
-	  electronFromZ=true;
-	  //cout<<"This particle (id "<<pdg<<" ) comes from the Z...the status is "<<status<<endl;
-	  TLorentzVector tmp((p->momentum()).x(),(p->momentum()).y(),(p->momentum()).z(),(p->momentum()).e() );
-	  partNOZ+=tmp;
-	}
-	if (fabs(motherId)==11) {
-	  //cout<<"This particle (id "<<pdg<<" ) comes from an electron...the particle status is "<<status<<", while its mother's status is "<<motherstatus<<endl;
-	}
-      }
-      double eta_gen= p->momentum().eta();
-      //if (debug_deep) cout<<"While the mother is "<<motherId<<endl;
-      if (count==2) {
-	// cout <<  " 3rd MC " << (*mcIter)->pdg_id() << endl; 
-	p_diss_mass= p->momentum().m();
-	p_diss= p->momentum().z();
-	if ( pdg == 2212){
-	  etaOutcomingProton= p->momentum().eta();
-	  energyOutcomingProton= p->momentum().e();
-	}
-      }
-      if (( pdg == 23)){
-	xi_Z_gen_minus=( p->momentum().e() - p->momentum().z() )/7000;
-	xi_Z_gen_plus=( p->momentum().e() + p->momentum().z() )/7000;
-	etaZ_gen=eta_gen;
-	energyZ_gen= p->momentum().e();
-	//cout<<"Z generated main parameters: eta "<<etaZ_gen<<" energy "<<energyZ_gen<<endl;
-      }
-      
-      eta_gen_vec.push_back( p->momentum().eta());
-      if ( status == 1 && count>2) {   
-	TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
-	part+=tmp;
-      }
-      if ( (status == 1) &&  (fabs(eta_gen) < 4.9) && (part_pt > 0.10) ) {   // if particle has a chance to reach the detector ...
-	TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
-	partVis+=tmp;
-	//	cout << " nel loop di Mx2_gen " <<  endl;
-      }
-      
-      //if (debug_deep) std::cout<<"Particle momentum along z is "<<setprecision(12)<<( p->momentum()).z()<<" and status "<<status<<std::endl;      
-      //if (debug_deep) cout<<"eta_gen "<<eta_gen<<" and status "<<status<<" pdg_id "<< p->pdg_id()<<" and energy "<< p->momentum().e()<<endl;
-      
-      
-      // new xL_gen definition (after Sasha)
-      if (count>=2 && status ==1)
-	{
-	  if (eta_gen > 4.9)  
-	    {
-	      xL_etaGTP5 += p->momentum().z();
-	      xL_GTP5Num++;
+	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
+	  bool electronFromZ=false;
+	  int motherId=0;
+	  int motherstatus=0;
+	  int status=(*mcIter)->status(); 
+	  int pdg=(*mcIter)->pdg_id();
+	  HepMC::GenParticle* p = *(mcIter);
+	  HepMC::GenVertex* productionVertex = p->production_vertex();
+	  double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
+	  
+	  //if (debug_deep) cout<<"The particle is "<<(*mcIter)->pdg_id()<<" in status "<<status<<endl;
+	  if (fabs(pdg)==11 || fabs(pdg)==22){
+	    
+	    try{ 
+	      motherId = (*(productionVertex->particles_in_const_begin()))->pdg_id();
+	      motherstatus=(*(productionVertex->particles_in_const_begin()))->status();
 	    }
-	  if (eta_gen < -4.9)  
-	    {
-	      xL_etaLTM5 += p->momentum().z();
-	      xL_LTM5Num++;
+	    catch(cms::Exception& e) {
+	      std::cout << " Not possible to access to the motherId... !" << std::endl;
 	    }
-	}
-
-
-      if (count>=2 && status==1){
-	if (p_diss>0) {
-	  if ( xL_p_diss < p->momentum().z() ){
-	    xL_p_diss= p->momentum().z();
+	    if (motherId==23) {
+	      electronFromZ=true;
+	      //cout<<"This particle (id "<<pdg<<" ) comes from the Z...the status is "<<status<<endl;
+	      TLorentzVector tmp((p->momentum()).x(),(p->momentum()).y(),(p->momentum()).z(),(p->momentum()).e() );
+	      partZ+=tmp;
+	    }
+	    if (fabs(motherId)==11) {
+	      //cout<<"This particle (id "<<pdg<<" ) comes from an electron...the particle status is "<<status<<", while its mother's status is "<<motherstatus<<endl;
+	    }
 	  }
-	}
-	if (p_diss<0) {
-	  if ( xL_p_diss > p->momentum().z() ){
-	    xL_p_diss= p->momentum().z();
+	  double eta_gen= p->momentum().eta();
+	  //if (debug_deep) cout<<"While the mother is "<<motherId<<endl;
+	  if (count==2) {
+	    // cout <<  " 3rd MC " << (*mcIter)->pdg_id() << endl; 
+	    p_diss_mass= p->momentum().m();
+	    p_diss= p->momentum().z();
+	    if ( pdg == 2212){
+	      etaOutcomingProton= p->momentum().eta();
+	      energyOutcomingProton= p->momentum().e();
+	    }
 	  }
-	}
-      }
-      if ( fabs(eta_gen)>5.2 && fabs(eta_gen)<6.6 && status == 1){
-	//if (debug_deep) std::cout<<"Particle in Castor, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
-	if (eta_gen<0) sumECastor_minus_gen += p->momentum().e();
-	if (eta_gen>0) sumECastor_plus_gen += p->momentum().e();
-      }
-      
-      if ( fabs(eta_gen)>8.2 && status == 1 && ( pdg == 2112 || pdg == 22) ){
-	//if (debug_deep) std::cout<<"Particle in ZDC, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
-	if (eta_gen<0) sumEZDC_minus_gen += p->momentum().e();
-	if (eta_gen>0) sumEZDC_plus_gen += p->momentum().e();
-      }      
-      count++;
-      //xi_gen+=  ( p->momentum()).z() * pow(2.71,-( p->momentum()).eta()) / (7000);
-      //xi_gen+=  ( p->momentum()).z() * pow(2.71,( p->momentum()).eta()) / (7000);
-    } // loop over particles
-
-    float xi_gen=part.M2()/(7000*7000);
-    float Mx2_gen=partVis.M2(); /// massaquadro visibile generata
-    TLorentzVector NOZ=part-partNOZ;
-    float xi_NOZ_gen=NOZ.M2()/(7000*7000);
-    //float xi_Z_gen=partNOZ.M2()/(7000*7000);
-    //std::cout<<"Particle XL "<< mostEnergeticXL << " id "<< mostEnergeticXLType <<endl;
-    if (debug_deep) cout<<"Mx2_gen is "<<Mx2_gen<<" while eta of the outcoming proton is "<<etaOutcomingProton<<" and the energy "<<energyOutcomingProton<<endl;
-      
-    mostEnergeticXL = xL_etaGTP5/3500.;
-    mostEnergeticXLNum = xL_GTP5Num ;
-    if (fabs(xL_etaGTP5)<fabs(xL_etaLTM5)) 
-      {
-	mostEnergeticXL = xL_etaLTM5/3500.;
-	mostEnergeticXLNum = xL_LTM5Num ;
-      }
-
-    // cout << "* XLgen " << mostEnergeticXL << " num " << mostEnergeticXLNum << " + " << xL_etaGTP5 << " - " << xL_etaLTM5 <<  endl;
-
-    Rootuple-> nParticles_gen= count;
-    Rootuple-> xi_gen = xi_gen; 
-    Rootuple-> Mx2_gen= Mx2_gen;
-    Rootuple-> xi_NOZ_gen= xi_NOZ_gen;
-    Rootuple-> sumECastor_gen_minus=sumECastor_minus_gen;
-    Rootuple-> sumECastor_gen_plus=sumECastor_plus_gen;
-    Rootuple-> sumEZDC_gen_minus=sumEZDC_minus_gen;
-    Rootuple-> sumEZDC_gen_plus=sumEZDC_plus_gen;
-    Rootuple-> etaOutcomingProton=etaOutcomingProton;
-    //Rootuple->mostEnergeticParticleGap_MC=mostEnergeticParticleGap;
-    Rootuple-> xL_gen=mostEnergeticXL;
-    Rootuple-> xL_Num_gen=mostEnergeticXLNum;
-    Rootuple-> xi_Z_gen_minus=xi_Z_gen_minus;
-    Rootuple-> xi_Z_gen_plus=xi_Z_gen_plus;
-    Rootuple-> etaZ_gen=etaZ_gen;
-    Rootuple-> energyZ_gen=energyZ_gen;
-    Rootuple-> p_diss_mass_gen=p_diss_mass;
-    Rootuple-> xL_p_diss= xL_p_diss;
-
-    //cout<<"Mx2_gen "<<Rootuple->Mx2_gen<<" Mx2 "<<Rootuple->Mx2 <<endl;	
-    
+	  if (( pdg == 23)){
+	    xi_Z_gen_minus=( p->momentum().e() - p->momentum().z() )/7000;
+	    xi_Z_gen_plus=( p->momentum().e() + p->momentum().z() )/7000;
+	    etaZ_gen=eta_gen;
+	    energyZ_gen= p->momentum().e();
+	    //cout<<"Z generated main parameters: eta "<<etaZ_gen<<" energy "<<energyZ_gen<<endl;
+	  }
+	  
+	  eta_gen_vec.push_back( p->momentum().eta());
+	  if ( status == 1 && count>2) {   
+	    TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
+	    part+=tmp;
+	  }
+	  if ( (status == 1) &&  (fabs(eta_gen) < 4.9) && (part_pt > 0.10) ) {   // if particle has a chance to reach the detector ...
+	    TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
+	    partVis+=tmp;
+	    //cout << " nel loop di Mx2_gen " <<  endl;
+	  }
+	  
+	  //if (debug_deep) std::cout<<"Particle momentum along z is "<<setprecision(12)<<( p->momentum()).z()<<" and status "<<status<<std::endl;      
+	  //if (debug_deep) cout<<"eta_gen "<<eta_gen<<" and status "<<status<<" pdg_id "<< p->pdg_id()<<" and energy "<< p->momentum().e()<<endl;
+	  
+	  
+	  // new xL_gen definition (after Sasha)
+	  if (count>=2 && status ==1)
+	    {
+	      if (eta_gen > 4.9)  
+		{
+		  xL_etaGTP5 += p->momentum().z();
+		  xL_GTP5Num++;
+		}
+	      if (eta_gen < -4.9)  
+		{
+		  xL_etaLTM5 += p->momentum().z();
+		  xL_LTM5Num++;
+		}
+	    }
+	  
+	  
+	  if (count>=2 && status==1){
+	    if (p_diss>0) {
+	      if ( xL_p_diss < p->momentum().z() ){
+		xL_p_diss= p->momentum().z();
+	      }
+	    }
+	    if (p_diss<0) {
+	      if ( xL_p_diss > p->momentum().z() ){
+		xL_p_diss= p->momentum().z();
+	      }
+	    }
+	  }
+	  if ( fabs(eta_gen)>5.2 && fabs(eta_gen)<6.6 && status == 1){
+	    //if (debug_deep) std::cout<<"Particle in Castor, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
+	    if (eta_gen<0) sumECastor_minus_gen += p->momentum().e();
+	    if (eta_gen>0) sumECastor_plus_gen += p->momentum().e();
+	  }
+	  
+	  if ( fabs(eta_gen)>8.2 && status == 1 && ( pdg == 2112 || pdg == 22) ){
+	    //if (debug_deep) std::cout<<"Particle in ZDC, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
+	    if (eta_gen<0) sumEZDC_minus_gen += p->momentum().e();
+	    if (eta_gen>0) sumEZDC_plus_gen += p->momentum().e();
+	  }      
+	  count++;
+	} // loop over particles
+	
+	float Mx2_gen=partVis.M2(); /// massaquadro visibile generata
+	TLorentzVector NOZ=partVis-partZ;
+	float Mx2_NOZ_gen=NOZ.M2();
+	//std::cout<<"Particle XL "<< mostEnergeticXL << " id "<< mostEnergeticXLType <<endl;
+	if (debug_deep) cout<<"Mx2_gen is "<<Mx2_gen<<" while eta of the outcoming proton is "<<etaOutcomingProton<<" and the energy "<<energyOutcomingProton<<endl;
+	
+	mostEnergeticXL = xL_etaGTP5/3500.;
+	mostEnergeticXLNum = xL_GTP5Num ;
+	if (fabs(xL_etaGTP5)<fabs(xL_etaLTM5)) 
+	  {
+	    mostEnergeticXL = xL_etaLTM5/3500.;
+	    mostEnergeticXLNum = xL_LTM5Num ;
+	  }
+	
+	// cout << "* XLgen " << mostEnergeticXL << " num " << mostEnergeticXLNum << " + " << xL_etaGTP5 << " - " << xL_etaLTM5 <<  endl;
+	
+	Rootuple-> nParticles_gen= count;
+	Rootuple-> Mx2_gen= Mx2_gen;
+	Rootuple-> Mx2_NOZ_gen= Mx2_NOZ_gen;
+	Rootuple-> sumECastor_gen_minus=sumECastor_minus_gen;
+	Rootuple-> sumECastor_gen_plus=sumECastor_plus_gen;
+	Rootuple-> sumEZDC_gen_minus=sumEZDC_minus_gen;
+	Rootuple-> sumEZDC_gen_plus=sumEZDC_plus_gen;
+	Rootuple-> etaOutcomingProton=etaOutcomingProton;
+	Rootuple-> xL_gen=mostEnergeticXL;
+	Rootuple-> xL_Num_gen=mostEnergeticXLNum;
+	Rootuple-> xi_Z_gen_minus=xi_Z_gen_minus;
+	Rootuple-> xi_Z_gen_plus=xi_Z_gen_plus;
+	Rootuple-> etaZ_gen=etaZ_gen;
+	Rootuple-> energyZ_gen=energyZ_gen;
+	Rootuple-> p_diss_mass_gen=p_diss_mass;
+	Rootuple-> xL_p_diss= xL_p_diss;
+	
+	//cout<<"Mx2_gen "<<Rootuple->Mx2_gen<<" Mx2 "<<Rootuple->Mx2 <<endl;	
+	
       }
     catch(cms::Exception& e)
       {
 	std::cout<<"No HEPMCProduct block found"<<e.what();
       }
-  
-    //PU studies, disabled now...
-    /*
-    try
-      {
-	Handle<PileupSummaryInfo> PUInfo;
-	iEvent.getByLabel("addPileupInfo", PUInfo);
-	
-	Rootuple->PU_NumInt = PUInfo->getPU_NumInteractions() ;
-	//for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) 
-	// {
-	    Rootuple->PU_zpos         =PUInfo->getPU_zpositions()    ;
-	    Rootuple->PU_ntrks_lowpT  =PUInfo->getPU_ntrks_lowpT()   ;
-	    Rootuple->PU_ntrks_highpT =PUInfo->getPU_ntrks_highpT()  ; 
-	    Rootuple->PU_sumpT_lowpT  =PUInfo->getPU_sumpT_lowpT()   ;  
-	    Rootuple->PU_sumpT_highpT =PUInfo->getPU_sumpT_highpT()  ; 
-	    // }
-	
-	std::cout << "ROBI Run:event " << eventNumber << ", PU nvtx: " <<  PUInfo->getPU_NumInteractions() <<   std::endl;
-	std::cout << "ROBI Run:event " << eventNumber << ",          " <<  Rootuple->PU_zpos.size()        <<   std::endl; 
-	for (int ni=0;ni<PUInfo->getPU_NumInteractions();ni++) {
-	  std::cout << ni << " zpos "            << (PUInfo->getPU_zpositions())[ni]  << " " << Rootuple->PU_zpos[ni]         << std::endl;
-	  std::cout << ni << " ntracks low pt "  << (PUInfo->getPU_ntrks_lowpT())[ni] << " " << Rootuple->PU_ntrks_lowpT[ni]  << std::endl;
-	  std::cout << ni << " ntracks high pt " << (PUInfo->getPU_ntrks_highpT())[ni]<< " " << Rootuple->PU_ntrks_highpT[ni] << std::endl;
-	  std::cout << ni << " sum low pt "      << (PUInfo->getPU_sumpT_lowpT())[ni] << " " << Rootuple->PU_sumpT_lowpT[ni]  << std::endl;
-	  std::cout << ni << " sum  high pt "    << (PUInfo->getPU_sumpT_highpT())[ni]<< " " << Rootuple->PU_sumpT_highpT[ni] << std::endl;
-	}
-      }
-    catch(cms::Exception& e)
-      {
-	std::cout<<"No PUinfoSummary block found"<<e.what();
-      }   
-    */
+    
+    
 
     Handle<reco::GenParticleCollection> genParticles;     
     iEvent.getByLabel("genParticles",genParticles);  // standard PYTHIA collection
     //iEvent.getByLabel("genParticlePlusGEANT",genParticles);  // PYTHIA + GEANT collection
     int numseltracks =0;
 
-    cout << "XLGEN " << Rootuple->xL_gen  << endl;
+    //cout << "XLGEN " << Rootuple->xL_gen  << endl;
     
     for(size_t i = 0; i < genParticles->size(); ++ i) {
       const GenParticle & p = (*genParticles)[i];
@@ -1266,7 +1237,6 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	   ///|| st == 8 ) { // when running over the  PYTHIA + GEANT collection
 	//cout << "GEN PART " << i << " " <<  p.pdgId() << " " << p.status() << " daughters " << n << " zpos " << vz << endl;  
 	if ( charge && fabs(etagen)<2.6 &&  pt >= 0.1 ) {  // !!  condition for xsec per 3 charged prompt particles
-	  //if ( fabs(etagen)<2.6 &&  pt >= 0.1 ) {  // condition for xsec per 3 prompt particles
 	  numseltracks++;
 	  genpt.push_back(pt);
 	  eta.push_back(etagen);
@@ -1285,10 +1255,10 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       tracks.push_back(genpt[sorted[i]]);
       etaPT.push_back(eta[sorted[i]]);
       if (i>30) break;
-    }
+    }  //  comes out size of 32!
     Rootuple->tracksPT_gen=tracks;
     Rootuple->etaOfTracksPT_gen=etaPT;   
-    Rootuple->numberoOfTracks_gen=tracks.size();  
+    Rootuple->numberOfTracks_gen=tracks.size();  
     genpt.clear();
     eta.clear();
     delete [] sorted;
@@ -1344,9 +1314,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   std::vector<Double_t> vertexNDOF;
   std::vector<Double_t> vertexChiNorm;
   std::vector<Double_t> vertexMolteplicity;
-  std::vector<Double_t> vertexNumberOfRecHits;
   double nhit=0;
-  bool PV1=true;
   std::vector<double> V_x;
   std::vector<double> V_y;
   std::vector<double> V_z; 
@@ -1368,7 +1336,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       
       //cout << vtx->x() << endl;
       
-      //Sorting the pt tracks, in order to take only the 10 most energetics
+      //Sorting the pt tracks, in order to take only the 31 most energetics
       const int  size = (int) pt.size();
       int *sorted = new int[size];
       double *v = new double[size];
@@ -1387,16 +1355,9 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       double ndof=vtx->ndof();
       double chiNorm=vtx->normalizedChi2();
       double NumbOfTracks=vtx->tracksSize();
-      if (PV1==true){
-        Rootuple->PV_x=vtx->x();
-        Rootuple->PV_y=vtx->y();
-        Rootuple->PV_z=vtx->z();
-	PV1=false;
-      }  
       vertexNDOF.push_back(ndof);
       vertexChiNorm.push_back(chiNorm);
       vertexMolteplicity.push_back(NumbOfTracks);
-      vertexNumberOfRecHits.push_back(nhit);
       nhit=0;
       if ( ndof != 0 ) {
 	V_x.push_back(vtx->x());
@@ -1415,7 +1376,6 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple-> vertexMolteplicity = vertexMolteplicity;
   Rootuple-> vertexChiNorm = vertexChiNorm;
   Rootuple-> vertexNDOF = vertexNDOF;
-  Rootuple-> vertexNumberOfRH = vertexNumberOfRecHits;
   Rootuple-> V_z = V_z;
   Rootuple-> V_y = V_y;
   Rootuple-> V_x = V_x;
@@ -1437,10 +1397,23 @@ MakeRootuplaForward::beginJob() {
   tree_= new TTree("tree_","tree_");
   tree_->Branch("Rootuple","DifNtuple",&Rootuple);
   HepHisto_PdgId = new TH1F("HepHisto_PdgId",   "Generated particles out ", 12000, -6000., 6000.);
+  HistoEtaEnergyW = new TH1F("HistoEtaEnergyW",   "energy weighted dist ", 40, -5., 5.);
+
   //CastorTree = new TTree("CastorTree","CastorTree");
   //CastorTree->Branch("Castor",&Castor,"EventNumber/I:sector:module:timing/F:energy");
   ZDCTree = new TTree("ZDCTree","ZSCTree");
   ZDCTree->Branch("ZDC",&ZDC,"EventNumber/I:side:section:channel:energy/F:timing");
+
+  std::vector<float> simulated;
+  std::vector<float> trueD;
+	
+  //Calculate the distributions (our data and MC)
+  for( int i=0; i<25; ++i) {
+    trueD.push_back(ZSkim_2010[i]); // Name of the vector calculated with estimatedPU.py!
+    simulated.push_back(probdistFlat10[i]); // Name of the vector included in Flat10.h !
+  }
+  
+  LumiWeights_ = edm::LumiReWeighting(simulated, trueD);
 }
 
 // ------------ method called once each job just after ending the event loop  -

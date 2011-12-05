@@ -7,7 +7,8 @@ process = cms.Process("ZSelection")
 
 process.load("FWCore.MessageService.MessageLogger_cfi")
 process.load('Configuration/StandardSequences/FrontierConditions_GlobalTag_cff')
-process.GlobalTag.globaltag = 'GR_P_V20::All'
+#--- for data reprocessed 2010? 
+process.GlobalTag.globaltag = 'GR_R_42_V8::All'
 
 process.load("MagneticField.Engine.uniformMagneticField_cfi") 
 
@@ -67,12 +68,11 @@ process.MakeRootuplaForward = cms.EDFilter('MakeRootuplaForward',
                                            filename=cms.untracked.string("SelectedRootupla.root"),
                                            CaloTowerTag= cms.InputTag("towerMaker","","RECO"),
                                            zeeCollectionTag = cms.untracked.InputTag("zeeFilter","selectedZeeCandidates","testDiffractive"),
-                                           ActivateMC=cms.untracked.bool(True),
+                                           ActivateMC=cms.untracked.bool(False),
                                            PVtxCollectionTag=cms.InputTag('offlinePrimaryVertices'),
                                            TrackCollectionTag = cms.InputTag("generalTracks"),
                                            VertexCollectionTag = cms.InputTag('offlinePrimaryVertices'),
                                            fPixelClusterLabel = cms.InputTag("siPixelClusters"),
-                                           #SiPixelClusteredmNewDetSetVector_siPixelClusters__RECO. 8221.09 2573.66
                                            zmumuCollectionTag = cms.untracked.InputTag("zmmCands"),
                                            electrons =cms.untracked.bool(True),
                                            muons =cms.untracked.bool(False),
@@ -80,15 +80,7 @@ process.MakeRootuplaForward = cms.EDFilter('MakeRootuplaForward',
 
 process.load("JetCollections_cfi")
 
-process.demo = cms.EDProducer('HistoProducer',
-                              electronCollection = cms.InputTag('gsfElectrons'),
-                              triggerCollection = cms.InputTag("TriggerResults","","HLT"),
-                              UseCombinedPrescales = cms.bool(False),
-                              TriggerNames = alltriggers,
-                              removePU=  cms.bool(True),
-                              usingMC=  cms.bool(True),
-                              doTheHLTAnalysis = cms.bool(False),
-                              VertexCollectionTag = cms.InputTag('offlinePrimaryVertices'),              
+
 )
 
 process.TFileService = cms.Service("TFileService",

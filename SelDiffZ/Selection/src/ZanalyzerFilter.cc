@@ -13,7 +13,7 @@ Implementation:
 //
 // Original Author:  Vieri Candelise & Matteo Marone
 //         Created:  Wed May 11 14:53:26 CEST 2011
-// $Id: ZanalyzerFilter.cc,v 1.9 2011/09/09 15:05:50 dscaini Exp $
+// $Id: ZanalyzerFilter.cc,v 1.2 2011/10/25 11:33:20 marone Exp $
 //
 //
 
@@ -22,7 +22,7 @@ Implementation:
 #include <memory>
 
 // user include files
-
+#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "SelDiffZ/Selection/interface/ZanalyzerFilter.h"
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
@@ -69,6 +69,54 @@ ZanalyzerFilter::filter (edm::Event & iEvent, edm::EventSetup const & iSetup)
   using namespace edm;
   Handle < GsfElectronCollection > electronCollection;
   iEvent.getByLabel (theElectronCollectionLabel, electronCollection);
+
+
+  if(ActivateMC_) 
+    {
+      /// For every event, fill gnerated histograms
+
+	const HepMC::GenEvent *myGenEvent;
+	// 3) generated electrons
+	Handle<edm::HepMCProduct> hepMC;
+	iEvent.getByLabel("generator",hepMC);
+	myGenEvent = hepMC->GetEvent();
+	//Loop on gen particles
+	HepMC::GenEvent::particle_const_iterator mcIter;
+	
+	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
+	  int status=(*mcIter)->status(); 
+	  int pdg=(*mcIter)->pdg_id();
+	  int motherId = 0;
+
+	  HepMC::GenParticle* p = *(mcIter);
+	  HepMC::GenVertex* productionVertex = p->production_vertex();
+	  //	  double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
+
+	  if (pdg==23 && status == 3 ) {
+
+	    h_invMassGEN->Fill(p->momentum().m());
+	    //cout<< " Z found " << p->momentum().m() << " " << status << endl;
+	  }
+	  if ( fabs(pdg) == 11 && status == 0 ) {
+	    
+	    try{ 
+	      motherId = (*(productionVertex->particles_in_const_begin()))->pdg_id();
+	      //int motherstatus=(*(productionVertex->particles_in_const_begin()))->status();
+	    }
+	    catch(cms::Exception& e) {
+	      std::cout << " Not possible to access to the motherId... !" << std::endl;
+	    }
+	    if ( motherId == 23 ) {
+	      //cout << " ele found " << pdg << endl;
+	      h_elePxGEN->Fill(p->momentum().x());
+	      h_elePyGEN->Fill(p->momentum().y());
+	      h_elePzGEN->Fill(p->momentum().z());
+	      h_eleEnergyGEN->Fill(p->momentum().e());	   
+	    }
+	  }
+	}
+
+    }
   if (!electronCollection.isValid ())
     return false;
 
@@ -83,47 +131,47 @@ ZanalyzerFilter::filter (edm::Event & iEvent, edm::EventSetup const & iSetup)
   const edm::TriggerNames & triggerNames = iEvent.triggerNames(*HLTResults);   
   bool flag=false;
    
-   if (HLTResults.isValid() && doTheHLTAnalysis_) {
-   /// Storing the Prescale information: loop over the triggers and record prescale
-   unsigned int minimalPrescale(10000);
-   unsigned int prescale(0);
-   bool bit(true);
-   std::pair<int,int> prescalepair;
-   std::vector<int>  triggerSubset;
-   for(unsigned int itrig = 0; itrig < triggerNames_.size(); ++itrig) {
-     if(triggerIndices_[itrig]!=2048) {
-       // check trigger response
-       bit = HLTResults->accept(triggerIndices_[itrig]);
-       triggerSubset.push_back(bit);
-       if(bit) {
-	 flag=true;
-	 if (debug) cout<<"Matched "<<triggerNames.triggerName(itrig)<<endl;
-	 int prescaleset = hltConfig_.prescaleSet(iEvent,iSetup);
-	 if(prescaleset!=-1) {
-	   prescalepair = hltConfig_.prescaleValues(iEvent,iSetup,triggerNames_[itrig]);
-	   if (debug) cout<<"prescale.first "<<prescalepair.first<<" prescalepair.second "<<prescalepair.second<<endl;
-	   if((useCombinedPrescales_ && prescalepair.first<0) || prescalepair.second<0) {
-	     edm::LogWarning("ZAnalyzerFilter") << " Unable to get prescale from event for trigger " << triggerNames.triggerName(itrig) << " :" 
-					   << prescalepair.first << ", " << prescalepair.second;
-	   }
-	   prescale = useCombinedPrescales_ ? prescalepair.first*prescalepair.second : prescalepair.second;
-	   minimalPrescale = minimalPrescale <  prescale ? minimalPrescale : prescale;
-	   if (debug) cout<<"prescale "<<prescale<<" minimal Prescale "<<minimalPrescale<<" for trigger "<<triggerNames.triggerName(itrig)<<endl;
-	 } 
-       }
-     }
-     else {
-       // that trigger is presently not in the menu
-       triggerSubset.push_back(false);
-     }
-   }
- }
+  if (HLTResults.isValid() && doTheHLTAnalysis_) {
+    /// Storing the Prescale information: loop over the triggers and record prescale
+    unsigned int minimalPrescale(10000);
+    unsigned int prescale(0);
+    bool bit(true);
+    std::pair<int,int> prescalepair;
+    std::vector<int>  triggerSubset;
+    for(unsigned int itrig = 0; itrig < triggerNames_.size(); ++itrig) {
+      if(triggerIndices_[itrig]!=2048) {
+	// check trigger response
+	bit = HLTResults->accept(triggerIndices_[itrig]);
+	triggerSubset.push_back(bit);
+	if(bit) {
+	  flag=true;
+	  if (debug) cout<<"Matched "<<triggerNames.triggerName(itrig)<<endl;
+	  int prescaleset = hltConfig_.prescaleSet(iEvent,iSetup);
+	  if(prescaleset!=-1) {
+	    prescalepair = hltConfig_.prescaleValues(iEvent,iSetup,triggerNames_[itrig]);
+	    if (debug) cout<<"prescale.first "<<prescalepair.first<<" prescalepair.second "<<prescalepair.second<<endl;
+	    if((useCombinedPrescales_ && prescalepair.first<0) || prescalepair.second<0) {
+	      edm::LogWarning("ZAnalyzerFilter") << " Unable to get prescale from event for trigger " << triggerNames.triggerName(itrig) << " :" 
+						 << prescalepair.first << ", " << prescalepair.second;
+	    }
+	    prescale = useCombinedPrescales_ ? prescalepair.first*prescalepair.second : prescalepair.second;
+	    minimalPrescale = minimalPrescale <  prescale ? minimalPrescale : prescale;
+	    if (debug) cout<<"prescale "<<prescale<<" minimal Prescale "<<minimalPrescale<<" for trigger "<<triggerNames.triggerName(itrig)<<endl;
+	  } 
+	}
+      }
+      else {
+	// that trigger is presently not in the menu
+	triggerSubset.push_back(false);
+      }
+    }
+  }
   
   if (!flag) 
     {
       if(!useAllTriggers_) return false;
     }
- 
+  
   bool isBarrelElectrons;
   bool isEndcapElectrons;
   bool isIsolatedBarrel;
@@ -135,27 +183,29 @@ ZanalyzerFilter::filter (edm::Event & iEvent, edm::EventSetup const & iSetup)
   int elIsAccepted=0;
   int elIsAcceptedEB=0;
   int elIsAcceptedEE=0;
-
+  
   std::vector<TLorentzVector> LV;
+  
+  
 
   if (electronCollection->size()==1) return false;
-
+  
   for (reco::GsfElectronCollection::const_iterator recoElectron = electronCollection->begin (); recoElectron != electronCollection->end (); recoElectron++) {
 
     if (recoElectron->et () <= 25)  continue;
- 
+    
     // Define Isolation variables
     double IsoTrk = (recoElectron->dr03TkSumPt () / recoElectron->et ());
     double IsoEcal = (recoElectron->dr03EcalRecHitSumEt () / recoElectron->et ());
     double IsoHcal = (recoElectron->dr03HcalTowerSumEt () / recoElectron->et ());
     double HE = recoElectron->hadronicOverEm();
-
+    
     //Define ID variables
-
+    
     float DeltaPhiTkClu = recoElectron->deltaPhiSuperClusterTrackAtVtx ();
     float DeltaEtaTkClu = recoElectron->deltaEtaSuperClusterTrackAtVtx ();
     float sigmaIeIe = recoElectron->sigmaIetaIeta ();
-
+    
     //Define Conversion Rejection Variables
 
     float Dcot = recoElectron->convDcot ();

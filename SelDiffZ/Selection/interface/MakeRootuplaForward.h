@@ -43,6 +43,7 @@
 #include "TFile.h"
 #include "TTree.h"
 #include "DataFormats/Luminosity/interface/LumiSummary.h"
+#include "PhysicsTools/Utilities/interface/LumiReWeighting.h"
 
 class DifNtuple;
 DifNtuple *Rootuple;
@@ -76,6 +77,7 @@ public:
   TTree *ZDCTree;
   TH1F *HepHisto_PdgId;
   //TH1F HepHisto_PdgId("HepHisto_PdgId",   "Generated particles out ", 12000, -6000., 6000.);
+  TH1F *HistoEtaEnergyW;
 
 private:
   virtual void beginJob();
@@ -101,5 +103,7 @@ private:
   bool muons_;
   bool NoMassCuts_;
   bool triggerAnalysis_;
+  edm::LumiReWeighting LumiWeights_;
+
 };
 #endif
