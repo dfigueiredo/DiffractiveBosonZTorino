@@ -74,8 +74,11 @@ class DifNtuple {
   double etaAllTracks_PF;
   double max_eta_gap_PF;
   double max_second_eta_gap_PF;
+  double eta_gap_limplus;
 
   double Mx2;
+  double Mx2_plus;
+  double Mx2_minus;
   double P_x;
   double P_y;
   double P_z;
@@ -126,6 +129,8 @@ class DifNtuple {
   double xL_p_diss;
 
   int nPart_PF;
+  int N_mx2plus;
+  int N_mx2minus;
   double etaOutcomingProton;
   double nParticles_gen;
   int numberOfLeptons;
@@ -154,7 +159,7 @@ class DifNtuple {
   std::vector<float> EnergyInEta;
 
 
-  static const char* version(){return "$Revision: 1.2 $";}
+  static const char* version(){return "$Revision: 1.3 $";}
 
   void Zero(){
     istlumi=0;
@@ -207,9 +212,12 @@ class DifNtuple {
     xi_Z_gen_plus=-1;
     max_eta_gap_PF=-999;
     max_second_eta_gap_PF=-999;
+    eta_gap_limplus=-10;
     xi_PV_PF_charged_minus=-1;
     xi_PV_PF_charged_plus=-1; 
     nPart_PF=-1;
+    N_mx2plus=-1;
+    N_mx2minus=-1;
     energyTot_PF_EE_minus=-1;
     energyTot_PF_EE_plus=-1;  
     bx=-999;
@@ -240,6 +248,8 @@ class DifNtuple {
     lepton2Phi=-999;
     lepton2Eta=-999;
     Mx2=-1;
+    Mx2_plus=-1;
+    Mx2_minus=-1;
     P_x=-1;
     P_y=-1;
     P_z=-1;
