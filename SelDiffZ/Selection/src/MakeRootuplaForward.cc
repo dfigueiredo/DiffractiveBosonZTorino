@@ -153,7 +153,6 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	
 	double MyWeight = LumiWeights_.weight( npv );
 	if (debug) cout<<"weight is "<<MyWeight<<endl;
-	cout<<"weight is "<<MyWeight<<endl;
 	Rootuple->PUMCweight=MyWeight;
       }
     catch(cms::Exception& e)
@@ -893,10 +892,12 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   const int  size = (int) etas.size();
   int *sorted = new int[size];
   double *v = new double[size];
+  double eta_gap_limplus = -10.0;
+  double eta_gap_limminus = -10.0;
   
   for (int i=0; i<size; i++) {
     v[i] = etas[i];
-    //if (debug_deep) cout<<v[i]<<endl;
+    if (debug_deep) cout<<v[i]<<endl;
   }
   TMath::Sort(size, v, sorted, true);
 
@@ -906,12 +907,18 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     for (int i=0; i<(size-1); i++) {
       diff[i] = fabs(etas[sorted[i+1]]-etas[sorted[i]]);
       //if (debug_deep) cout<<" etas " << i << " size " << size << " diff "<< diff[i]<<endl;
-        }
+      //cout<<" etas "  << " = " << etas[sorted[i+1]] << " - " <<  etas[sorted[i]] <<  " diff "<< diff[i]<<endl;
+    }
   
     TMath::Sort(size-1, diff, diffsorted, true);
     
     //checking the max gap
     double max_eta_gap=diff[diffsorted[0]];
+    eta_gap_limminus = etas[sorted[diffsorted[0]+1]] ;
+    eta_gap_limplus = etas[sorted[diffsorted[0]]] ;
+
+    /// cout << "SUP " <<  eta_gap_limplus  << " " <<  eta_gap_limminus  << endl;
+
     Rootuple->max_eta_gap_PF=max_eta_gap;
 
     if (size>2) {
@@ -954,6 +961,58 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   for (int i=0; i<size4; i++) {
     muEnergy[i] = v4[sorted4[i]];
   }
+  delete [] sorted3;
+  delete [] v3;
+  delete [] sorted4;
+  delete [] v4;
+
+  /// Loop to compute Mx2 a destra e a sinistra del GAP
+ 
+  TLorentzVector dataMass_plus(0.,0.,0.,0.);
+  TLorentzVector dataMass_minus(0.,0.,0.,0.);
+  int nplus =0;
+  int nminus =0;
+
+  for (reco::PFCandidateCollection::const_iterator iter = PFCandidates->begin(); iter != PFCandidates->end(); ++iter) {
+    const reco::PFCandidate *particle = &(*iter);
+    double energy=particle->energy();
+    double pt=particle->pt();
+    double px=particle->px();
+    double py=particle->py();
+    double pz=particle->pz();
+    double eta=particle->eta();
+    double charge=particle->charge();
+    
+    //eta cut - excluding last HF module 
+    if (fabs(eta)>4.9) continue;
+    
+    TLorentzVector tmp(px,py,pz,energy); 
+    
+    if  (  (fabs(charge) >0 && pt >  PtThPFCharged ) ||
+	   (fabs(charge) == 0  && ( (fabs(eta) <= 1.5 && energy > EnThPFBar)  ||
+				    (fabs(eta) > 1.5 && fabs(eta) <= 3 && energy > EnThPFEnd) ||
+				    (fabs(eta) > 3 && energy >EnThPFFw) ) )   )
+      {        
+	
+	if ( eta >= eta_gap_limplus ) {
+	  dataMass_plus+=tmp;
+	  nplus++;
+	}
+	else {
+	  dataMass_minus+=tmp;
+	  nminus++;
+	}
+      }
+  }  // PF loop
+
+
+  Rootuple->Mx2_plus=dataMass_plus.M2();  /// massaquadro misurata
+  Rootuple->Mx2_minus=dataMass_minus.M2();  /// massaquadro misurata
+  Rootuple->N_mx2plus=nplus;  /// massaquadro misurata
+  Rootuple->N_mx2minus=nminus;  /// massaquadro misurata
+  Rootuple->eta_gap_limplus=eta_gap_limplus;  /// massaquadro misurata
+
+  //  cout << "Mass2 "  << nPart_PF << " " << Rootuple->Mx2 << " " <<  nplus << " " << Rootuple->Mx2_plus << " " << nminus << " " <<  Rootuple->Mx2_minus << " " << "  eta  " <<  eta_gap_limplus <<   endl;
   Rootuple->electronEnergy=electronEnergy;
   Rootuple->muEnergy=muEnergy;
 
@@ -994,10 +1053,6 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple-> sumEHF_PF_minus=sumEHF_minus_PF;
   Rootuple-> sumEHF_PF_plus=sumEHF_plus_PF;
 
-  delete [] sorted3;
-  delete [] v3;
-  delete [] sorted4;
-  delete [] v4;
 
 
   // *************************************************************************
