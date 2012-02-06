@@ -75,6 +75,9 @@ class DifNtuple {
   double max_eta_gap_PF;
   double max_second_eta_gap_PF;
   double eta_gap_limplus;
+  double max_eta_gap_gen;
+  double max_second_eta_gap_gen;
+  double eta_gap_limplus_gen;
 
   double Mx2;
   double Mx2_plus;
@@ -84,11 +87,18 @@ class DifNtuple {
   double P_z;
   double Mx2_gen;
   double Mx2_NOZ_gen;
+  double Mx2_plus_gen;
+  double Mx2_minus_gen;
 
   int nTowersHF_plus;
   int nTowersHF_minus;
   double sumEHF_plus;
   double sumEHF_minus;
+  double sumEHF_L_plus;
+  double sumEHF_L_minus;
+  double sumEHF_S_plus;
+  double sumEHF_S_minus;
+
   double sumEHF_PF_minus;
   double sumEHF_PF_plus;
   double minEHF;
@@ -96,12 +106,9 @@ class DifNtuple {
   double sumEZDC_plus;
   double sumECastor_gen_plus;
   double sumECastor_gen_minus;
-  double sumECastor_Th_minus;
   double sumEZDC_gen_minus;
   double sumEZDC_gen_plus;
-  bool CastorActivity;
-  double sumECastorRaw_minus;
-  double sumECastor_minus;
+  double sumECASTOR_minus;
 
   double energyTot_PF;
   double energyTot_PF_Barrel_minus;
@@ -131,6 +138,8 @@ class DifNtuple {
   int nPart_PF;
   int N_mx2plus;
   int N_mx2minus;
+  int N_mx2plus_gen;
+  int N_mx2minus_gen;
   double etaOutcomingProton;
   double nParticles_gen;
   int numberOfLeptons;
@@ -157,9 +166,11 @@ class DifNtuple {
   std::vector<float> PU_sumpT_highpT;
 
   std::vector<float> EnergyInEta;
+  std::vector<float> EnergyInEtaHFL;
+  std::vector<float> EnergyInEtaHFS;
+  std::vector<float> EnergyCastorModule;
 
-
-  static const char* version(){return "$Revision: 1.3 $";}
+  static const char* version(){return "$Revision: 1.4 $";}
 
   void Zero(){
     istlumi=0;
@@ -173,6 +184,10 @@ class DifNtuple {
     Epz_Calo_minus=-1;
     sumEHF_plus=-1;
     sumEHF_minus=-1;
+    sumEHF_L_plus=-1;
+    sumEHF_L_minus=-1;
+    sumEHF_S_plus=-1;
+    sumEHF_S_minus=-1;
     minEHF=-1;
     etaMax_Calo=-999;
     etaMin_Calo=-999;
@@ -213,11 +228,16 @@ class DifNtuple {
     max_eta_gap_PF=-999;
     max_second_eta_gap_PF=-999;
     eta_gap_limplus=-10;
+    max_eta_gap_gen=-999;
+    max_second_eta_gap_gen=-999;
+    eta_gap_limplus_gen=-10;
     xi_PV_PF_charged_minus=-1;
     xi_PV_PF_charged_plus=-1; 
     nPart_PF=-1;
     N_mx2plus=-1;
     N_mx2minus=-1;
+    N_mx2plus_gen=-1;
+    N_mx2minus_gen=-1;
     energyTot_PF_EE_minus=-1;
     energyTot_PF_EE_plus=-1;  
     bx=-999;
@@ -226,7 +246,6 @@ class DifNtuple {
     sumEHF_PF_plus=-1;
     etaOutcomingProton=-999;
     nParticles_gen=-1;
-    sumECastor_Th_minus=-1;
     numberOfLeptons=-1;
     etaZ=-999;
     vertexNDOF.clear();
@@ -236,9 +255,7 @@ class DifNtuple {
     vertexMolteplicity.clear();
     xL_gen=-999;
     xL_Num_gen=-999;
-    CastorActivity=false;
-    sumECastorRaw_minus=-1;
-    sumECastor_minus=-1;
+    sumECASTOR_minus=-1;
     V_x.clear();
     V_y.clear();
     V_z.clear();
@@ -250,6 +267,8 @@ class DifNtuple {
     Mx2=-1;
     Mx2_plus=-1;
     Mx2_minus=-1;
+    Mx2_plus_gen=-1;
+    Mx2_minus_gen=-1;
     P_x=-1;
     P_y=-1;
     P_z=-1;
@@ -266,7 +285,10 @@ class DifNtuple {
     PU_sumpT_lowpT.clear();
     PU_sumpT_highpT.clear();
     EnergyInEta.clear();
-  }
+    EnergyInEtaHFL.clear();
+    EnergyInEtaHFS.clear();
+    EnergyCastorModule.clear();
+ }
   
 
 };

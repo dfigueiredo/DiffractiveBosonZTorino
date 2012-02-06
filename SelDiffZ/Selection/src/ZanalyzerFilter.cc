@@ -13,7 +13,7 @@ Implementation:
 //
 // Original Author:  Vieri Candelise & Matteo Marone
 //         Created:  Wed May 11 14:53:26 CEST 2011
-// $Id: ZanalyzerFilter.cc,v 1.2 2011/10/25 11:33:20 marone Exp $
+// $Id: ZanalyzerFilter.cc,v 1.3 2011/12/05 14:34:24 arcidiac Exp $
 //
 //
 
@@ -22,7 +22,7 @@ Implementation:
 #include <memory>
 
 // user include files
-#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
+//#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "SelDiffZ/Selection/interface/ZanalyzerFilter.h"
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
@@ -31,6 +31,8 @@ Implementation:
 #include "DataFormats/EgammaCandidates/interface/GsfElectron.h"
 #include "DataFormats/EgammaCandidates/interface/GsfElectronFwd.h"
 #include "DataFormats/Math/interface/LorentzVector.h"
+#include "DataFormats/HepMCCandidate/interface/GenParticle.h"
+
 #include "TLorentzVector.h"
 #include "TMath.h"
 #include "TFile.h"
@@ -75,48 +77,43 @@ ZanalyzerFilter::filter (edm::Event & iEvent, edm::EventSetup const & iSetup)
     {
       /// For every event, fill gnerated histograms
 
-	const HepMC::GenEvent *myGenEvent;
-	// 3) generated electrons
-	Handle<edm::HepMCProduct> hepMC;
-	iEvent.getByLabel("generator",hepMC);
-	myGenEvent = hepMC->GetEvent();
-	//Loop on gen particles
-	HepMC::GenEvent::particle_const_iterator mcIter;
+      Handle<reco::GenParticleCollection> genParticles;     
+      iEvent.getByLabel("genParticles",genParticles);  // standard PYTHIA collection
+      
+      for(size_t i = 0; i < genParticles->size(); ++ i) {
+	const GenParticle & p = (*genParticles)[i];
+	int pdg = p.pdgId();
+	int status = p.status();  	 
+	//double eta_gen = p.eta();
+	//double part_pt = p.pt();
+	double ener_gen= p.energy();
+	double px_gen  = p.px();
+	double py_gen  = p.py();
+	double pz_gen  = p.pz();
+	double mass_gen= p.mass();
+	//bool electronFromZ=false;
+	int motherId=0;
 	
-	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
-	  int status=(*mcIter)->status(); 
-	  int pdg=(*mcIter)->pdg_id();
-	  int motherId = 0;
+	if (  p.mother() ) motherId =  p.mother()->pdgId();
+	
 
-	  HepMC::GenParticle* p = *(mcIter);
-	  HepMC::GenVertex* productionVertex = p->production_vertex();
-	  //	  double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
-
-	  if (pdg==23 && status == 3 ) {
-
-	    h_invMassGEN->Fill(p->momentum().m());
-	    //cout<< " Z found " << p->momentum().m() << " " << status << endl;
-	  }
-	  if ( fabs(pdg) == 11 && status == 0 ) {
-	    
-	    try{ 
-	      motherId = (*(productionVertex->particles_in_const_begin()))->pdg_id();
-	      //int motherstatus=(*(productionVertex->particles_in_const_begin()))->status();
-	    }
-	    catch(cms::Exception& e) {
-	      std::cout << " Not possible to access to the motherId... !" << std::endl;
-	    }
-	    if ( motherId == 23 ) {
-	      //cout << " ele found " << pdg << endl;
-	      h_elePxGEN->Fill(p->momentum().x());
-	      h_elePyGEN->Fill(p->momentum().y());
-	      h_elePzGEN->Fill(p->momentum().z());
-	      h_eleEnergyGEN->Fill(p->momentum().e());	   
-	    }
-	  }
+	if (pdg==23 && status == 3 ) {
+	  
+	  h_invMassGEN->Fill(mass_gen);
 	}
+	if ( fabs(pdg) == 11 && status == 0 ) {
+	  
+	  if ( motherId == 23 ) {
+	    //cout << " ele found " << pdg << endl;
+	    h_elePxGEN->Fill(px_gen);
+	    h_elePyGEN->Fill(py_gen);
+	    h_elePzGEN->Fill(pz_gen);
+	    h_eleEnergyGEN->Fill(ener_gen);	   
+	  }
+	}	
+      }
+    }   //  if Activate_MC
 
-    }
   if (!electronCollection.isValid ())
     return false;
 

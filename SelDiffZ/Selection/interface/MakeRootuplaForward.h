@@ -78,6 +78,9 @@ public:
   TH1F *HepHisto_PdgId;
   //TH1F HepHisto_PdgId("HepHisto_PdgId",   "Generated particles out ", 12000, -6000., 6000.);
   TH1F *HistoEtaEnergyW;
+  TH1F *HistoEtaEnergyHFS;
+  TH1F *HistoEtaEnergyHFL;
+  TH1F *HistoCastorModule;
 
 private:
   virtual void beginJob();
@@ -90,6 +93,7 @@ private:
   edm::InputTag zmumuCollectionTag_;
   edm::InputTag electronCollectionTag_;
   edm::InputTag caloTowerTag_;
+  edm::InputTag castorHitsTag_;
   edm::InputTag metCollectionTag_;
   edm::InputTag PVtxCollectionTag_;
   edm::InputTag TrackCollectionTag_;

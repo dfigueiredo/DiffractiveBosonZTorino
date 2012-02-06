@@ -3,7 +3,7 @@
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
 #include "DataFormats/ParticleFlowReco/interface/PFBlock.h"
 #include "DataFormats/ParticleFlowReco/interface/PFCluster.h"
-#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
+//#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "DataFormats/HcalDetId/interface/HcalZDCDetId.h"
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
@@ -26,7 +26,7 @@
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
 #include "DataFormats/ParticleFlowReco/interface/PFBlock.h"
 #include "DataFormats/ParticleFlowReco/interface/PFCluster.h"
-#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
+//#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "DataFormats/HcalDetId/interface/HcalZDCDetId.h"
 #include "DataFormats/HcalRecHit/interface/HcalRecHitCollections.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
@@ -59,6 +59,7 @@ MakeRootuplaForward::MakeRootuplaForward(const edm::ParameterSet& iConfig)
   //std::string outputFile_D = iConfig.getUntrackedParameter<std::string>("filename");
   //outputFile_ = iConfig.getUntrackedParameter<std::string>("outputFile", outputFile_D);
   caloTowerTag_=iConfig.getParameter<edm::InputTag>("CaloTowerTag");
+  castorHitsTag_=iConfig.getParameter<edm::InputTag>("CastorHitsTag");
   if(electrons_)  zeeCollectionTag_ = iConfig.getUntrackedParameter<edm::InputTag>("zeeCollectionTag");
   zmumuCollectionTag_ = iConfig.getUntrackedParameter<edm::InputTag>("zmumuCollectionTag");
   ActivateMC_ = iConfig.getUntrackedParameter<Bool_t>("ActivateMC", true);
@@ -289,12 +290,9 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
       //xi_Z_minus=(Z.Et()*pow(2.71,-Z.Eta()))/7000;
       //xi_Z_plus=(Z.Et()*pow(2.71,Z.Eta()))/7000;
       //Double_t mee=zee.mass(); 
-      double mee_down=60;
-      double mee_up=120;
-      //cout<<"mee "<<mee<<" and eta "<<Z.Eta()<<endl;
+      
       
       Rootuple->ZMass=mee;  
-      //Rootuple->etaZed=zee.eta();  
       Rootuple->etaZ=Z.Eta();   
       
 
@@ -358,6 +356,10 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   //Sum(E)
   double sumEHF_plus = 0.;
   double sumEHF_minus = 0.;
+  double sumEHF_L_plus = 0.;
+  double sumEHF_L_minus = 0.;
+  double sumEHF_S_plus = 0.;
+  double sumEHF_S_minus = 0.;
   double sumEHE_plus = 0.;
   double sumEHE_minus = 0.;
   double sumEHB_plus = 0.;
@@ -391,7 +393,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   //cout<< " before calotower loop "  <<endl;
   for(; calotower != calotowers_end; ++calotower) {
     
-    if (fabs(calotower->eta())> 4.9) continue;
+    if (fabs(calotower->eta())> 4.7) continue;   /// excluding ring12 and ring13 of HF
     
     bool hasHCAL = false;
     bool hasHF = false;
@@ -430,6 +432,8 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     double caloTowerEt = calotower->et();
     double caloTowerEmEt = calotower->emEt();
     double caloTowerHadEt = calotower->hadEt();
+    double EHF_S = 0;
+    double EHF_L = 0;
     //double CaloTheta = calotower->p4(0.0).theta();
     //double pzck = calotower->p() * TMath::Cos(CaloTheta) ;
     ///// old wrong  Epz+= caloTowerEnergy + pt*zside;
@@ -438,22 +442,38 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     
     if( hasHF && !hasHE )
       {
-	if( caloTowerEnergy > energyThresholdHF)
+	if( caloTowerEnergy > energyThresholdHF && fabs(calotower->eta())> 2.98 )   //// excluding HF ring1
 	  {
 	    CalAboveTh = true;
 	    //cout << "HF>> " <<  calotower->id() << " HAD energy "     << caloTowerHadEnergy << " EM energy " << caloTowerEmEnergy << " energy " << caloTowerEnergy << endl; 
+	    // Added Long and short fibers
+	    //emc=L-S
+	    //hac=2*S
+	    //Tot = L+S
+	    // S = hac/2
+	    // L = Tot - S
+
+	    EHF_S = caloTowerHadEnergy/2;
+	    EHF_L = caloTowerEnergy - caloTowerHadEnergy/2;
+
 	    if(zside >= 0)
 	      {
 		++nTowersHF_plus;
 		sumEHF_plus += caloTowerEnergy;
+		sumEHF_S_plus += EHF_S;
+		sumEHF_L_plus += EHF_L;
 		sumETHF_plus += caloTowerEt;
 	      }
 	    else
 	      {
 		++nTowersHF_minus;
 		sumEHF_minus += caloTowerEnergy;
+		sumEHF_S_minus += EHF_S;
+		sumEHF_L_minus += EHF_L;
 		sumETHF_minus += caloTowerEt;
 	      }
+	    HistoEtaEnergyHFS->Fill(calotower->eta(),EHF_S);
+	    HistoEtaEnergyHFL->Fill(calotower->eta(),EHF_L);
 	  }
       }
     else if( hasHE && !hasHF && !hasHB )
@@ -563,6 +583,10 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
   Rootuple->Epz_Calo_minus=Epz_minus;
   Rootuple->sumEHF_plus=sumEHF_plus;
   Rootuple->sumEHF_minus=sumEHF_minus;
+  Rootuple->sumEHF_L_plus=sumEHF_L_plus;
+  Rootuple->sumEHF_L_minus=sumEHF_L_minus;
+  Rootuple->sumEHF_S_plus=sumEHF_S_plus;
+  Rootuple->sumEHF_S_minus=sumEHF_S_minus;
   Rootuple->etaMax_Calo=etaMax;
   Rootuple->etaMin_Calo=etaMin;
   Rootuple->nTowersHF_plus=nTowersHF_plus;
@@ -774,8 +798,10 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     double charge=particle->charge();
     double theta=particle->theta();
 
-    //eta cut - excluding last HF module 
-    if (fabs(eta)>4.9) continue;
+    HistoEtaEnergyW->Fill(eta,energy);
+
+    //eta cut - excluding ring 12 13 HF  
+    if (fabs(eta)>4.7) continue;
 
     if (cold==true) 
       {
@@ -859,7 +885,6 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 	}
 	etas.push_back(eta);
 	dataMass+=tmp;
-	HistoEtaEnergyW->Fill(eta,energy);
       }
   }  // PF loop
 
@@ -875,7 +900,16 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     //cout << "ARRAY " <<  *(pippo+i) << "  " << HistoEtaEnergyW->GetBinContent(i) << endl;
     Rootuple->EnergyInEta.push_back(HistoEtaEnergyW->GetBinContent(i)) ;
   }
+  for (int i=1;i<=HistoEtaEnergyHFS->GetNbinsX();i++) {
+    Rootuple->EnergyInEtaHFS.push_back(HistoEtaEnergyHFS->GetBinContent(i)) ;
+    Rootuple->EnergyInEtaHFL.push_back(HistoEtaEnergyHFL->GetBinContent(i)) ;
+  }
 
+  /// clearing bin contents
+  HistoEtaEnergyW->Reset();
+  HistoEtaEnergyHFS->Reset() ;
+  HistoEtaEnergyHFL->Reset() ;
+ 
  
   
 
@@ -907,7 +941,8 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     for (int i=0; i<(size-1); i++) {
       diff[i] = fabs(etas[sorted[i+1]]-etas[sorted[i]]);
       //if (debug_deep) cout<<" etas " << i << " size " << size << " diff "<< diff[i]<<endl;
-      //cout<<" etas "  << " = " << etas[sorted[i+1]] << " - " <<  etas[sorted[i]] <<  " diff "<< diff[i]<<endl;
+      //cout<<"PF etas "  << " = " << etas[sorted[i+1]] << " - " <<  etas[sorted[i]] <<  " GAP  "<< diff[i]<<endl;
+      //cout<<"PF  etas "  << " = " << etas[sorted[i]] << endl;
     }
   
     TMath::Sort(size-1, diff, diffsorted, true);
@@ -917,7 +952,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     eta_gap_limminus = etas[sorted[diffsorted[0]+1]] ;
     eta_gap_limplus = etas[sorted[diffsorted[0]]] ;
 
-    /// cout << "SUP " <<  eta_gap_limplus  << " " <<  eta_gap_limminus  << endl;
+    //cout << "PF eta ranges " <<  eta_gap_limplus  << " " <<  eta_gap_limminus  << endl;
 
     Rootuple->max_eta_gap_PF=max_eta_gap;
 
@@ -931,7 +966,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     delete [] diffsorted;
   }
   
-  if (debug_deep) cout<<" GAPs  " << Rootuple->max_eta_gap_PF << "  " <<  Rootuple->max_second_eta_gap_PF <<endl;
+  //cout<<" GAPs (1-2) " << Rootuple->max_eta_gap_PF << "  " <<  Rootuple->max_second_eta_gap_PF <<endl;
   
   delete [] sorted;
   delete [] v;
@@ -983,8 +1018,8 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     double eta=particle->eta();
     double charge=particle->charge();
     
-    //eta cut - excluding last HF module 
-    if (fabs(eta)>4.9) continue;
+    //eta cut - excluding ring 12 13 HF  
+    if (fabs(eta)>4.7) continue;
     
     TLorentzVector tmp(px,py,pz,energy); 
     
@@ -1064,6 +1099,7 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
 
     //Variable declaration
     int count=0;
+    int Nstable_gen=0;
     TLorentzVector part(0.,0.,0.,0.);
     TLorentzVector partVis(0.,0.,0.,0.);
     TLorentzVector partZ(0.,0.,0.,0.);
@@ -1095,209 +1131,230 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     std::vector<double> etaPT;
     std::vector<double> tracksPT;
 
-    try
-      {
-	//////OLD BLOCK
-	const HepMC::GenEvent *myGenEvent;
-	// 3) generated electrons
-	Handle<edm::HepMCProduct> hepMC;
-	iEvent.getByLabel("generator",hepMC);
-	myGenEvent = hepMC->GetEvent();
-	//Loop on gen particles
-	HepMC::GenEvent::particle_const_iterator mcIter;
-	
-	//edm::Handle<reco::GenParticleCollection> genParticles;
-	//iEvent.getByLabel("generator", genParticles );
-	
-	//for (reco::GenParticleCollection::const_iterator mcIter=genParticles->begin();mcIter!=genParticles->end();++mcIter){
-	
-	for ( mcIter=myGenEvent->particles_begin(); mcIter != myGenEvent->particles_end(); mcIter++ ) {
-	  bool electronFromZ=false;
-	  int motherId=0;
-	  int motherstatus=0;
-	  int status=(*mcIter)->status(); 
-	  int pdg=(*mcIter)->pdg_id();
-	  HepMC::GenParticle* p = *(mcIter);
-	  HepMC::GenVertex* productionVertex = p->production_vertex();
-	  double part_pt = sqrt( p->momentum().px()* p->momentum().px()+ p->momentum().py()* p->momentum().py());
-	  
-	  //if (debug_deep) cout<<"The particle is "<<(*mcIter)->pdg_id()<<" in status "<<status<<endl;
-	  if (fabs(pdg)==11 || fabs(pdg)==22){
+
+    Handle<reco::GenParticleCollection> genParticles;     
+    iEvent.getByLabel("genParticles",genParticles);  // standard PYTHIA collection
+    
+    for(size_t i = 0; i < genParticles->size(); ++ i) {
+      const GenParticle & p = (*genParticles)[i];
+      int pdg = p.pdgId();
+      int status = p.status();  	 
+      double eta_gen = p.eta();
+      double part_pt = p.pt();
+      double ener_gen= p.energy();
+      double px_gen  = p.px();
+      double py_gen  = p.py();
+      double pz_gen  = p.pz();
+      double mass_gen= p.mass();
+      bool electronFromZ=false;
+      int motherId=0;
+
+      if(debug_deep) cout << "before mother id" << endl;
+      
+      if (  p.mother() ) motherId =  p.mother()->pdgId();
+
+      
+      TLorentzVector tmp( px_gen ,py_gen , pz_gen ,ener_gen );
+      
+      
+      if (fabs(pdg)==11 || fabs(pdg)==22){ 	    
+	if (motherId==23) {
+	  electronFromZ=true;
+	  //cout<<"This particle (id "<<pdg<<" ) comes from the Z...the status is "<<status<<endl;
+	  partZ+=tmp;
+	}
+      }
+
+      //if (debug_deep) cout<<"While the mother is "<<motherId<<endl;
+      if (count==2) {    /// only works for MC Pompyt dissociative
+	p_diss_mass= mass_gen;
+	p_diss= pz_gen;
+	if ( pdg == 2212){
+	  etaOutcomingProton= eta_gen;
+	  energyOutcomingProton= ener_gen;
+	}
+      }
+      if (( pdg == 23)){
+	xi_Z_gen_minus=( ener_gen - pz_gen )/7000;
+	xi_Z_gen_plus=( ener_gen + pz_gen )/7000;
+	etaZ_gen=eta_gen;
+	energyZ_gen= ener_gen;
+	//cout<<"Z generated main parameters: eta "<<etaZ_gen<<" energy "<<energyZ_gen<<endl;
+      }
+      
+      
+      if (status == 1) 
+	{
+	  //// vector to find gaps (cut at 1 GeV in energy)
+	  if  ( ( fabs(eta_gen) <= 1.5  && ener_gen > EnThPFBar )  ||
+		(fabs(eta_gen) > 1.5 && fabs(eta_gen) <= 3 && ener_gen > EnThPFEnd) ||
+		(fabs(eta_gen) > 3 && ener_gen >EnThPFFw)  ) {
 	    
-	    try{ 
-	      motherId = (*(productionVertex->particles_in_const_begin()))->pdg_id();
-	      motherstatus=(*(productionVertex->particles_in_const_begin()))->status();
-	    }
-	    catch(cms::Exception& e) {
-	      std::cout << " Not possible to access to the motherId... !" << std::endl;
-	    }
-	    if (motherId==23) {
-	      electronFromZ=true;
-	      //cout<<"This particle (id "<<pdg<<" ) comes from the Z...the status is "<<status<<endl;
-	      TLorentzVector tmp((p->momentum()).x(),(p->momentum()).y(),(p->momentum()).z(),(p->momentum()).e() );
-	      partZ+=tmp;
-	    }
-	    if (fabs(motherId)==11) {
-	      //cout<<"This particle (id "<<pdg<<" ) comes from an electron...the particle status is "<<status<<", while its mother's status is "<<motherstatus<<endl;
-	    }
-	  }
-	  double eta_gen= p->momentum().eta();
-	  //if (debug_deep) cout<<"While the mother is "<<motherId<<endl;
-	  if (count==2) {
-	    // cout <<  " 3rd MC " << (*mcIter)->pdg_id() << endl; 
-	    p_diss_mass= p->momentum().m();
-	    p_diss= p->momentum().z();
-	    if ( pdg == 2212){
-	      etaOutcomingProton= p->momentum().eta();
-	      energyOutcomingProton= p->momentum().e();
-	    }
-	  }
-	  if (( pdg == 23)){
-	    xi_Z_gen_minus=( p->momentum().e() - p->momentum().z() )/7000;
-	    xi_Z_gen_plus=( p->momentum().e() + p->momentum().z() )/7000;
-	    etaZ_gen=eta_gen;
-	    energyZ_gen= p->momentum().e();
-	    //cout<<"Z generated main parameters: eta "<<etaZ_gen<<" energy "<<energyZ_gen<<endl;
+	    eta_gen_vec.push_back( eta_gen);
 	  }
 	  
-	  eta_gen_vec.push_back( p->momentum().eta());
-	  if ( status == 1 && count>2) {   
-	    TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
+	  if (  count>2) {   
 	    part+=tmp;
 	  }
-	  if ( (status == 1) &&  (fabs(eta_gen) < 4.9) && (part_pt > 0.10) ) {   // if particle has a chance to reach the detector ...
-	    TLorentzVector tmp(( p->momentum()).x(),( p->momentum()).y(),( p->momentum()).z(),( p->momentum()).e() );
+	  if (  (fabs(eta_gen) < 4.7) && (part_pt > 0.10) ) {   // if particle has a chance to reach the detector ...
 	    partVis+=tmp;
 	    //cout << " nel loop di Mx2_gen " <<  endl;
 	  }
 	  
-	  //if (debug_deep) std::cout<<"Particle momentum along z is "<<setprecision(12)<<( p->momentum()).z()<<" and status "<<status<<std::endl;      
-	  //if (debug_deep) cout<<"eta_gen "<<eta_gen<<" and status "<<status<<" pdg_id "<< p->pdg_id()<<" and energy "<< p->momentum().e()<<endl;
-	  
-	  
 	  // new xL_gen definition (after Sasha)
-	  if (count>=2 && status ==1)
+	  if (count>=2 )
 	    {
-	      if (eta_gen > 4.9)  
+	      if (eta_gen > 4.7)  
 		{
-		  xL_etaGTP5 += p->momentum().z();
+		  xL_etaGTP5 += pz_gen;
 		  xL_GTP5Num++;
 		}
-	      if (eta_gen < -4.9)  
+	      if (eta_gen < -4.7)  
 		{
-		  xL_etaLTM5 += p->momentum().z();
+		  xL_etaLTM5 += pz_gen;
 		  xL_LTM5Num++;
 		}
 	    }
 	  
-	  
-	  if (count>=2 && status==1){
+	  if (count>=2 ){
 	    if (p_diss>0) {
-	      if ( xL_p_diss < p->momentum().z() ){
-		xL_p_diss= p->momentum().z();
+	      if ( xL_p_diss < pz_gen ){
+		xL_p_diss= pz_gen;
 	      }
 	    }
 	    if (p_diss<0) {
-	      if ( xL_p_diss > p->momentum().z() ){
-		xL_p_diss= p->momentum().z();
+	      if ( xL_p_diss > pz_gen ){
+		xL_p_diss= pz_gen;
 	      }
 	    }
 	  }
-	  if ( fabs(eta_gen)>5.2 && fabs(eta_gen)<6.6 && status == 1){
-	    //if (debug_deep) std::cout<<"Particle in Castor, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
-	    if (eta_gen<0) sumECastor_minus_gen += p->momentum().e();
-	    if (eta_gen>0) sumECastor_plus_gen += p->momentum().e();
+	  if ( fabs(eta_gen)>5.2 && fabs(eta_gen)<6.6 ){
+	    //if (debug_deep) std::cout<<"Particle in Castor, having eta "<<eta_gen<<" and energy "<< ener_gen<<endl;
+	    if (eta_gen<0) sumECastor_minus_gen += ener_gen;
+	    if (eta_gen>0) sumECastor_plus_gen += ener_gen;
 	  }
 	  
-	  if ( fabs(eta_gen)>8.2 && status == 1 && ( pdg == 2112 || pdg == 22) ){
-	    //if (debug_deep) std::cout<<"Particle in ZDC, having eta "<<eta_gen<<" and energy "<< p->momentum().e()<<endl;
-	    if (eta_gen<0) sumEZDC_minus_gen += p->momentum().e();
-	    if (eta_gen>0) sumEZDC_plus_gen += p->momentum().e();
+	  if ( fabs(eta_gen)>8.2  && ( pdg == 2112 || pdg == 22) ){
+	    //if (debug_deep) std::cout<<"Particle in ZDC, having eta "<<eta_gen<<" and energy "<< ener_gen<<endl;
+	    if (eta_gen<0) sumEZDC_minus_gen += ener_gen;
+	    if (eta_gen>0) sumEZDC_plus_gen += ener_gen;
 	  }      
-	  count++;
-	} // loop over particles
-	
-	float Mx2_gen=partVis.M2(); /// massaquadro visibile generata
-	TLorentzVector NOZ=partVis-partZ;
-	float Mx2_NOZ_gen=NOZ.M2();
-	//std::cout<<"Particle XL "<< mostEnergeticXL << " id "<< mostEnergeticXLType <<endl;
-	if (debug_deep) cout<<"Mx2_gen is "<<Mx2_gen<<" while eta of the outcoming proton is "<<etaOutcomingProton<<" and the energy "<<energyOutcomingProton<<endl;
-	
-	mostEnergeticXL = xL_etaGTP5/3500.;
-	mostEnergeticXLNum = xL_GTP5Num ;
-	if (fabs(xL_etaGTP5)<fabs(xL_etaLTM5)) 
-	  {
-	    mostEnergeticXL = xL_etaLTM5/3500.;
-	    mostEnergeticXLNum = xL_LTM5Num ;
-	  }
-	
-	// cout << "* XLgen " << mostEnergeticXL << " num " << mostEnergeticXLNum << " + " << xL_etaGTP5 << " - " << xL_etaLTM5 <<  endl;
-	
-	Rootuple-> nParticles_gen= count;
-	Rootuple-> Mx2_gen= Mx2_gen;
-	Rootuple-> Mx2_NOZ_gen= Mx2_NOZ_gen;
-	Rootuple-> sumECastor_gen_minus=sumECastor_minus_gen;
-	Rootuple-> sumECastor_gen_plus=sumECastor_plus_gen;
-	Rootuple-> sumEZDC_gen_minus=sumEZDC_minus_gen;
-	Rootuple-> sumEZDC_gen_plus=sumEZDC_plus_gen;
-	Rootuple-> etaOutcomingProton=etaOutcomingProton;
-	Rootuple-> xL_gen=mostEnergeticXL;
-	Rootuple-> xL_Num_gen=mostEnergeticXLNum;
-	Rootuple-> xi_Z_gen_minus=xi_Z_gen_minus;
-	Rootuple-> xi_Z_gen_plus=xi_Z_gen_plus;
-	Rootuple-> etaZ_gen=etaZ_gen;
-	Rootuple-> energyZ_gen=energyZ_gen;
-	Rootuple-> p_diss_mass_gen=p_diss_mass;
-	Rootuple-> xL_p_diss= xL_p_diss;
-	
-	//cout<<"Mx2_gen "<<Rootuple->Mx2_gen<<" Mx2 "<<Rootuple->Mx2 <<endl;	
-	
-      }
-    catch(cms::Exception& e)
-      {
-	std::cout<<"No HEPMCProduct block found"<<e.what();
-      }
+	  Nstable_gen++;
+	  
+	}  // status =1
+      count++;
+      
+    } // loop over particles
     
     
-
-    Handle<reco::GenParticleCollection> genParticles;     
-    iEvent.getByLabel("genParticles",genParticles);  // standard PYTHIA collection
-    //iEvent.getByLabel("genParticlePlusGEANT",genParticles);  // PYTHIA + GEANT collection
+    //// Computing GAPs
+    
+    
+    const int  size = (int) eta_gen_vec.size();
+    int *sortedgen=   new int[size];
+    double *vgen = new double[size];
+    double eta_gap_limplus_gen = -10.0;
+    double eta_gap_limminus_gen = -10.0;
+    
+    for (int i=0; i<size; i++) {
+      vgen[i] = eta_gen_vec[i];
+      if (debug_deep) cout<<vgen[i]<<endl;
+    }
+    TMath::Sort(size, vgen, sortedgen, true);
+    
+    if (size > 1) {
+      double *diff = new double[size-1];
+      int *diffsorted = new int[size-1];
+      for (int i=0; i<(size-1); i++) {
+	diff[i] = fabs(eta_gen_vec[sortedgen[i+1]]-eta_gen_vec[sortedgen[i]]);
+	//if (debug_deep) cout<<" eta " << i << " size " << size << " diff "<< diff[i]<<endl;
+	//	    cout<<"GEN  etas "  << " = " << eta_gen_vec[sortedgen[i+1]] << " - " <<  eta_gen_vec[sortedgen[i]] <<  " GAP diff "<< diff[i]<<endl;
+	//cout<<" GEN etas "  << " = " << eta_gen_vec[sortedgen[i]] <<endl;
+      }
+      
+      TMath::Sort(size-1, diff, diffsorted, true);
+      
+      //checking the max gap
+      double max_eta_gap_gen=diff[diffsorted[0]];
+      eta_gap_limminus_gen = eta_gen_vec[sortedgen[diffsorted[0]+1]] ;
+      eta_gap_limplus_gen = eta_gen_vec[sortedgen[diffsorted[0]]] ;
+	  
+      //cout << "GEN eta ranges " <<  eta_gap_limplus_gen  << " " <<  eta_gap_limminus_gen  << endl;
+      
+      Rootuple->max_eta_gap_gen=max_eta_gap_gen;
+      
+      if (size>2) {
+	double max_second_eta_gap_gen=diff[diffsorted[1]];
+	Rootuple->max_second_eta_gap_gen=max_second_eta_gap_gen;
+	if (debug_deep) cout<<" diff  " << diff[diffsorted[0]] << " sec " << diff[diffsorted[1]] << " diff size "<< diff[size-2] <<endl;
+      }
+      
+      delete [] diff;
+      delete [] diffsorted;
+    }
+    
+    
+    delete [] sortedgen;
+    delete [] vgen;
+    
+    
+    
+    /// Loop to compute Mx2 Generated a destra e a sinistra del GAP
+    
+    TLorentzVector dataMassG_plus(0.,0.,0.,0.);
+    TLorentzVector dataMassG_minus(0.,0.,0.,0.);
+    int nplusG =0;
+    int nminusG =0;
     int numseltracks =0;
 
-    //cout << "XLGEN " << Rootuple->xL_gen  << endl;
     
     for(size_t i = 0; i < genParticles->size(); ++ i) {
       const GenParticle & p = (*genParticles)[i];
-      int id = p.pdgId();
-      int st = p.status();  
-      int pz = p.pz(); 
-      const Candidate * mom = p.mother();
-      double pt = p.pt(), etagen = p.eta();
-      //double phi = p.phi(), mass = p.mass();
-      //double vx = p.vx(), vy = p.vy(), 
-      //double vz = p.vz();
+      int status = p.status();  	 
+      double eta_gen = p.eta();
       int charge = p.charge();
-      //int n = p.numberOfDaughters();
-      // debug
-      //      if (Rootuple->xL_gen>0 && log10(1-Rootuple->xL_gen)>-1 && Rootuple->etaMax_PF<1 && ( st ==1  ))
-      //	{
-      //	  cout <<" NICO XL "  <<  id << "  -st " << st << " pz " << pz << " eta " << etagen  ;   
-      //	  if (mom) cout << " mother " << mom->pdgId(); 
-      //	    cout << endl;
-      //	}
-
-
-      if ( st == 1 ) {
-	   ///|| st == 8 ) { // when running over the  PYTHIA + GEANT collection
-	//cout << "GEN PART " << i << " " <<  p.pdgId() << " " << p.status() << " daughters " << n << " zpos " << vz << endl;  
-	if ( charge && fabs(etagen)<2.6 &&  pt >= 0.1 ) {  // !!  condition for xsec per 3 charged prompt particles
-	  numseltracks++;
-	  genpt.push_back(pt);
-	  eta.push_back(etagen);
+      double pt = p.pt();
+      
+      if( status == 1 && p.energy() > 1 ) {
+	
+	TLorentzVector tmp( p.px(),p.py(),p.pz(),p.energy());
+	
+	if ( eta_gen >= eta_gap_limplus_gen ) {
+	  dataMassG_plus+=tmp;
+	  nplusG++;
+	}
+	else {
+	  dataMassG_minus+=tmp;
+	  nminusG++;
 	}
       }
-    }
+      
+      if ( status == 1 ) {
+	if ( charge && fabs(eta_gen)<2.6 &&  pt >= 0.1 ) {  // !!  condition for xsec per 3 charged prompt particles
+	  numseltracks++;
+	  genpt.push_back(pt);
+	  eta.push_back(eta_gen);
+	}
+      }
+    } // end of genparticle loop
+    
+    
+    float Mx2_gen=partVis.M2(); /// massaquadro visibile generata
+    TLorentzVector NOZ=partVis-partZ;
+    float Mx2_NOZ_gen=NOZ.M2();
+    //std::cout<<"Particle XL "<< mostEnergeticXL << " id "<< mostEnergeticXLType <<endl;
+    if (debug_deep) cout<<"Mx2_gen is "<<Mx2_gen<<" while eta of the outcoming proton is "<<etaOutcomingProton<<" and the energy "<<energyOutcomingProton<<endl;
+    
+    mostEnergeticXL = xL_etaGTP5/3500.;
+    mostEnergeticXLNum = xL_GTP5Num ;
+    if (fabs(xL_etaGTP5)<fabs(xL_etaLTM5)) 
+      {
+	mostEnergeticXL = xL_etaLTM5/3500.;
+	mostEnergeticXLNum = xL_LTM5Num ;
+      }
+    
+    // cout << "* XLgen " << mostEnergeticXL << " num " << mostEnergeticXLNum << " + " << xL_etaGTP5 << " - " << xL_etaLTM5 <<  endl;
+    
     
     const int  size2 = (int) genpt.size();
     int *sorted = new int[size2];
@@ -1318,7 +1375,94 @@ MakeRootuplaForward::filter(edm::Event& iEvent, const edm::EventSetup& iSetup)
     eta.clear();
     delete [] sorted;
     delete [] vv;
+    
+    
+    
+    Rootuple->Mx2_plus_gen=dataMassG_plus.M2();  /// massaquadro misurata
+    Rootuple->Mx2_minus_gen=dataMassG_minus.M2();  /// massaquadro misurata
+    Rootuple->N_mx2plus_gen=nplusG;  /// massaquadro misurata
+    Rootuple->N_mx2minus_gen=nminusG;  /// massaquadro misurata
+    Rootuple->eta_gap_limplus_gen=eta_gap_limplus_gen;  
+    
+    
+    Rootuple-> nParticles_gen= Nstable_gen;
+    Rootuple-> Mx2_gen= Mx2_gen;
+    Rootuple-> Mx2_NOZ_gen= Mx2_NOZ_gen;
+    Rootuple-> sumECastor_gen_minus=sumECastor_minus_gen;
+    Rootuple-> sumECastor_gen_plus=sumECastor_plus_gen;
+    Rootuple-> sumEZDC_gen_minus=sumEZDC_minus_gen;
+    Rootuple-> sumEZDC_gen_plus=sumEZDC_plus_gen;
+    Rootuple-> etaOutcomingProton=etaOutcomingProton;
+    Rootuple-> xL_gen=mostEnergeticXL;
+    Rootuple-> xL_Num_gen=mostEnergeticXLNum;
+    Rootuple-> xi_Z_gen_minus=xi_Z_gen_minus;
+    Rootuple-> xi_Z_gen_plus=xi_Z_gen_plus;
+    Rootuple-> etaZ_gen=etaZ_gen;
+    Rootuple-> energyZ_gen=energyZ_gen;
+    Rootuple-> p_diss_mass_gen=p_diss_mass;
+    Rootuple-> xL_p_diss= xL_p_diss;
+    
   }
+
+
+  // *************************************************************************
+  // Castor Calorimeter
+  // *************************************************************************
+  // access RecHit information 
+  
+  
+  // Threshold for tower suggested by CASTOR = 1.5 GeV
+  // Threshold for RecHit suggested by CASTOR = 0.3 GeV
+
+  ///*  edm::Handle<CastorRecHitCollection> CastorRecHitstmp;
+  
+ // iEvent.getByLabel("castorreco",CastorRecHitstmp); 
+  //int NRecHits = CastorRecHits->size(); 
+  //for (size_t i = 0; i < CastorRecHitstmp->size(); ++i) { 
+   // const CastorRecHit & rh = (*CastorRecHitstmp)[i]; 
+//
+ //   double RecHitE = rh.energy()*0.9375;
+  //  double RecHitETh = 0.3;
+   // int RecHitMod = rh.id().module(); 
+
+//    if (RecHitE < RecHitETh ) continue ; 
+    
+//    if (rh.id().module()>5 ) continue ; 
+    
+//    cout << " CASTOR ENERGY corr = " << i << " " <<rh.id() << " " << RecHitE << endl;
+ //   } */
+
+  double CASTORtotalrechitenergy = 0;
+  edm::Handle<CastorRecHitCollection> CastorRecHits;
+  
+  iEvent.getByLabel(castorHitsTag_,CastorRecHits); 
+  //int NRecHits = CastorRecHits->size(); 
+  for (size_t i = 0; i < CastorRecHits->size(); ++i) { 
+    const CastorRecHit & rh = (*CastorRecHits)[i]; 
+
+    double RecHitE = rh.energy()*0.9375;   // zlatka  fC/GeV  conversion absolute scale
+    double RecHitETh = 0.3;  //  zlatka  300 noise  
+    int RecHitMod = rh.id().module(); 
+
+    if (RecHitE < RecHitETh ) continue ; 
+    
+    HistoCastorModule->Fill(RecHitMod, RecHitE);
+
+    if (rh.id().module()>5 ) continue ; 
+
+    CASTORtotalrechitenergy += RecHitE; 
+
+    // cout << " CASTOR ENERGY c = " << i << " " <<rh.id() << " " << RecHitE << endl;
+  } 
+  
+  Rootuple->sumECASTOR_minus = CASTORtotalrechitenergy; 
+  for (int i=1;i<=HistoCastorModule->GetNbinsX();i++) {
+    Rootuple->EnergyCastorModule.push_back(HistoCastorModule->GetBinContent(i)) ;
+  }
+  HistoCastorModule->Reset();
+
+
+
 
   // *************************************************************************
   // Zero Degree Calorimeter
@@ -1453,6 +1597,10 @@ MakeRootuplaForward::beginJob() {
   tree_->Branch("Rootuple","DifNtuple",&Rootuple);
   HepHisto_PdgId = new TH1F("HepHisto_PdgId",   "Generated particles out ", 12000, -6000., 6000.);
   HistoEtaEnergyW = new TH1F("HistoEtaEnergyW",   "energy weighted dist ", 40, -5., 5.);
+  HistoEtaEnergyHFS = new TH1F("HistoEtaEnergyHFS",   "HF Short fiber ", 80, -5., 5.);
+  HistoEtaEnergyHFL = new TH1F("HistoEtaEnergyHFL",   "HF Long fiber ", 80, -5., 5.);
+  HistoCastorModule = new TH1F("HistoCastorModule",   "Castor Energy per Module ", 15, -0.5, 14.5);
+
 
   //CastorTree = new TTree("CastorTree","CastorTree");
   //CastorTree->Branch("Castor",&Castor,"EventNumber/I:sector:module:timing/F:energy");
