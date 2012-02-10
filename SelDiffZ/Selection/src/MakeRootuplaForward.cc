@@ -1609,14 +1609,15 @@ MakeRootuplaForward::beginJob() {
 
   std::vector<float> simulated;
   std::vector<float> trueD;
-	
-  //Calculate the distributions (our data and MC)
-  for( int i=0; i<25; ++i) {
-    trueD.push_back(ZSkim_2010[i]); // Name of the vector calculated with estimatedPU.py!
-    simulated.push_back(probdistFlat10[i]); // Name of the vector included in Flat10.h !
+  if (ActivateMC_) {
+    //Calculate the distributions (our data and MC)
+    for( int i=0; i<25; ++i) {
+      trueD.push_back(ZSkim_2010[i]); // Name of the vector calculated with estimatedPU.py!
+      simulated.push_back(probdistFlat10[i]); // Name of the vector included in Flat10.h !
+    }
+    
+    LumiWeights_ = edm::LumiReWeighting(simulated, trueD);
   }
-  
-  LumiWeights_ = edm::LumiReWeighting(simulated, trueD);
 }
 
 // ------------ method called once each job just after ending the event loop  -
